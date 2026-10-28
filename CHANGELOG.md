@@ -2,6 +2,14 @@
 
 Each `## <version>` section becomes the notes of the GitHub release `v<version>`. Newest first.
 
+## 3.0.0
+
+The plugin is renamed `denisulmer` → `denisulmer-skills`; the skills themselves are unchanged.
+
+- Skills are now `/denisulmer-skills:<skill>` (for example `/denisulmer-skills:pr-babysit`).
+- Run `/plugin uninstall denisulmer@denisulmer`, then
+  `/plugin install denisulmer-skills --marketplace denisulmer/skills`. The marketplace is still `denisulmer`.
+
 ## 2.0.0
 
 The PR skills work on GitHub, GitLab, Azure DevOps and plain git, and the plugin is now called `denisulmer`.

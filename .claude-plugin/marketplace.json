@@ -9,10 +9,10 @@
   },
   "plugins": [
     {
-      "name": "denisulmer",
+      "name": "denisulmer-skills",
       "source": "./",
       "description": "Pull requests from review to merge on GitHub, GitLab, Azure DevOps or plain git: a 0-100 risk score, tiered review rounds with fixes recorded as PR threads, a watched merge, and a setup skill that teaches them each repository.",
-      "version": "2.0.0",
+      "version": "3.0.0",
       "author": {
         "name": "Denis Ulmer"
       },

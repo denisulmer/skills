@@ -25,7 +25,7 @@ jobs:
           BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
-          version=$(jq -r '.plugins[] | select(.name == "denisulmer") | .version' .claude-plugin/marketplace.json)
+          version=$(jq -r '.plugins[] | select(.name == "denisulmer-skills") | .version' .claude-plugin/marketplace.json)
           tag="v$version"
 
           if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then

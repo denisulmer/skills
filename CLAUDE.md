@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-Claude Code skills, published as the `denisulmer` plugin from `.claude-plugin/marketplace.json`.
+Claude Code skills, published as the `denisulmer-skills` plugin from `.claude-plugin/marketplace.json`.
 
 ## Every change to `skills/` is a release
 
-1. Raise `version` of the `denisulmer` plugin in `.claude-plugin/marketplace.json` (semver: a renamed
+1. Raise `version` of the `denisulmer-skills` plugin in `.claude-plugin/marketplace.json` (semver: a renamed
    skill, command or profile location is major; a new skill or command is minor; a fix is patch).
 2. Add `## <version>` at the top of `CHANGELOG.md`: one sentence on what changed for someone using the
    skills, then bullets. Say what a user has to do (rename, move a file, uninstall something).
