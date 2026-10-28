@@ -1,17 +1,26 @@
 # Repository profiles
 
 A profile teaches the risk scorer, the review rounds and the merge step what is special about one
-repository. `signals.mjs` picks the profile whose `remotes` entry is a substring of `git remote get-url origin`
-(user names in the URL are stripped first).
+repository. `pr-risk/scripts/signals.mjs` finds it, first match wins:
 
-Keep your profiles in `~/.claude/pr-risk/profiles/` (or `$CLAUDE_CONFIG_DIR/pr-risk/profiles/`): they are
-read before this folder, survive plugin updates, and a profile of a private repository stays private.
+1. **Yours:** `~/.claude/pr-profiles/*.md` (or `$CLAUDE_CONFIG_DIR/pr-profiles/`), when an entry in
+   `remotes` is a substring of one of the repo's remote URLs (user names stripped first), or an entry in
+   `paths` is the repo's main checkout. Private, survives plugin updates, overrides the team's.
+2. **The team's:** `.claude/pr-profile.md` committed in the repository, read from the target branch (the
+   `--base` ref), never from the PR's head: a PR cannot loosen the rules it is scored by, and a change to
+   the profile only counts once it is merged.
+
+Both work the same from every worktree: remotes and the main checkout are shared by all worktrees of a
+repository, and the committed profile is read from git, not from a working tree.
+`signals.mjs --which-profile --base <ref> --repo <path>` prints the one that applies.
 
 ~~~markdown
 ---
-name: <org>-<project>-<repo>
-remotes:
-  - dev.azure.com/<org>/<project>/_git/<repo>
+name: <owner>-<repo>
+remotes:                # yours only; leave out of a committed profile
+  - github.com/<owner>/<repo>
+paths:                  # yours only, for a repository without a remote
+  - C:/src/<repo>
 ---
 
 # <Repo name>
@@ -31,7 +40,7 @@ One paragraph: what runs here and where its written standards live.
 ## Judgment notes      — this repo's one-way doors, costly two-way doors, fitting blast-radius words
 ## Checks              — table of purpose → command (fast, per area, everything, live smoke)
 ## Conventions a fix must keep
-## Merge               — merge strategy and whether to delete the source branch
+## Merge               — strategy (merge | squash | rebase | rebase-merge) and whether to delete the source branch
 ~~~
 
 ## Rule fields
@@ -45,7 +54,3 @@ One paragraph: what runs here and where its written standards live.
 | `cap` | Maximum score when **every** changed file matches. |
 | `adjust` | Points added when **every** changed file matches (negative for discounts). |
 | `reason` | Shown in the triage; write it so a reviewer understands the rule without opening this file. |
-
-To draft a profile for a new repository: read its agent guides and ADRs, list where authentication,
-migrations, public contracts, shared libraries, deployment manifests and release tooling live, run
-`signals.mjs` over its last twenty merges, and tune until the bounds look right to the user.

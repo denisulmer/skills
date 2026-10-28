@@ -9,24 +9,25 @@ description: Score how dangerous a pull request or branch is, 0-100, from its bl
 repository's danger map imposes. The number decides how hard a change gets reviewed, so it has to be
 explainable in two sentences: a score nobody can explain is a score nobody can calibrate.
 
-Scripts live in this skill's base directory. The PR commands come from the `ado-pr` skill beside it
-(`<base>/../ado-pr/scripts/ado-pr.mjs`).
+Scripts live in this skill's base directory. The PR commands come from the `pr-host` skill beside it
+(`<pr-host>` = `node <base>/../pr-host/scripts/pr-host.mjs`; GitHub, GitLab, Azure DevOps or plain git).
 
 ## Steps
 
 1. **Get the change.**
-   - Azure DevOps PR: `node <ado-pr> show <id|url>` gives source and target branches and the head commit.
+   - A PR: `<pr-host> show <id|url>` gives source and target branches and the head commit.
      Then `git fetch origin <source> <target>`. A completed PR's source branch is usually deleted: use
      its `sourceCommit` as head and `targetCommit` as base instead.
-   - Local branch: base is `origin/<target branch>`, head is `HEAD`.
-   - Read the PR description and any linked work item: they state the intent the door and radius are
-     judged against.
+   - A branch without a PR: base is `origin/<target branch>` (or the target branch itself when the repo
+     has no remote), head is `HEAD`.
+   - Read the PR description and any linked issue or work item: they state the intent the door and radius
+     are judged against.
 2. **Count.** `node <base>/scripts/signals.mjs --base origin/<target> --head <head commit> --repo <checkout>`.
    It reports sizes, the danger-map rules the change hits, destructive migration lines, and
-   `bounds` (floor, cap, adjust, with reasons). It uses the profile whose `remotes` matches `origin`,
-   looking in `~/.claude/pr-risk/profiles/` first, then this skill's `profiles/`. With no matching
-   profile it applies defaults only; say so, and offer to draft a profile into `~/.claude/pr-risk/profiles/`
-   (`profiles/README.md` says how).
+   `bounds` (floor, cap, adjust, with reasons). The repository profile comes from `~/.claude/pr-profiles/`
+   (matched by remote URL or checkout path) or else the repo's `.claude/pr-profile.md` as committed on the
+   base, never the head, so a change cannot loosen its own rules; `profile.source` says which. With no
+   profile it applies defaults only; say so, and offer the pr-setup skill to draft one.
 3. **Read the diff.** All of it up to about 1,500 changed lines; beyond that, every file the signals
    flagged plus a skim of the rest. Look for what counting can't see: a renamed JSON property is a contract
    change, a "refactor" that changes a default is a behaviour change, a deleted file may be the only reader

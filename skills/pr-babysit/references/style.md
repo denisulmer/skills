@@ -7,7 +7,7 @@ need them cannot be missed.
 ## Contents
 
 1. Rules
-2. Azure DevOps comments: triage, finding, replies, people's comments, round summary, report thread
+2. PR comments: triage, finding, replies, people's comments, round summary, report thread
 3. Chat: triage line, decisions, round limit, merge question, merge progress
 4. Push notifications
 
@@ -25,7 +25,7 @@ need them cannot be missed.
    ✅ fixed · ↩️ declined · 🧭 decided by <name> · ❓ needs <name> · ⚠️ unproven.
 4. **Short lines, no walls.** One fact per bullet, at most three sentences per paragraph, a table when
    three or more items share the same fields.
-5. **Never rely on a single newline.** Azure DevOps may join consecutive lines into one paragraph.
+5. **Never rely on a single newline.** Azure DevOps and GitHub join consecutive lines into one paragraph.
    Separate lines with a blank line, or make them list items.
 6. **Evidence goes in a code block**, trimmed to the lines that make the point (ten at most, `…` for
    cuts), with the command named above it.
@@ -35,10 +35,13 @@ need them cannot be missed.
    auditors find it.
 9. **The repository's words, not the machinery's.** Domain nouns from `CONTEXT.md`. Say "reviewer",
    "check", "round". Never mention agents, lenses, prompts, schemas, workflows or tokens.
-10. **Every Azure DevOps comment starts with 🤖**, so nobody takes it for something the user typed.
+10. **Every PR comment starts with 🤖**, so nobody takes it for something the user typed.
     Write in a neutral voice ("Checked: …"), not "I", because the comment carries the user's name.
 
-## 2. Azure DevOps comments
+## 2. PR comments
+
+Statuses below are pr-host's; on GitHub and GitLab the resolved ones (`fixed`, `wontFix`, `byDesign`,
+`closed`) resolve the thread.
 
 ### Triage (`pr-babysit:triage`, status `closed`)
 
@@ -264,7 +267,7 @@ Merge with a merge commit and delete the branch?
 
 Say something only when the state changes in a way the user would care about:
 
-- `Auto-complete is set; waiting for the PR build.`
+- `Auto-merge is set; waiting for the PR build.`
 - `The PR build failed in check-frontends (lint). Fixed in 1a2b3c4; the build is running again.`
 - `**PR !27887 merged** as 1a2b3c4. Branch deleted, worktree removed.`
 

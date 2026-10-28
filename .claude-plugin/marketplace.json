@@ -9,20 +9,21 @@
   },
   "plugins": [
     {
-      "name": "ado-pr",
+      "name": "denisulmer",
       "source": "./",
-      "description": "Azure DevOps pull requests from review to merge: PR threads and policies from the terminal, a 0-100 risk score, tiered review rounds with fixes, and a watched merge.",
-      "version": "1.0.0",
+      "description": "Pull requests from review to merge on GitHub, GitLab, Azure DevOps or plain git: a 0-100 risk score, tiered review rounds with fixes recorded as PR threads, a watched merge, and a setup skill that teaches them each repository.",
+      "version": "2.0.0",
       "author": {
         "name": "Denis Ulmer"
       },
       "homepage": "https://github.com/denisulmer/skills",
       "repository": "https://github.com/denisulmer/skills",
       "license": "MIT",
-      "keywords": ["azure-devops", "pull-request", "code-review", "merge"],
+      "keywords": ["pull-request", "code-review", "merge", "github", "gitlab", "azure-devops"],
       "strict": false,
       "skills": [
-        "./skills/ado-pr",
+        "./skills/pr-setup",
+        "./skills/pr-host",
         "./skills/pr-risk",
         "./skills/pr-babysit",
         "./skills/pr-merge"

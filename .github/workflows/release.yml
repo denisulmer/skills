@@ -1,0 +1,51 @@
+# Publishes a GitHub release for every new plugin version: when the version in
+# .claude-plugin/marketplace.json has no tag yet, tag v<version> and use its CHANGELOG.md section as the
+# notes. Fails when skills/ changed without a new version, so no change ships unannounced.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Release the version if it is new
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          version=$(jq -r '.plugins[] | select(.name == "denisulmer") | .version' .claude-plugin/marketplace.json)
+          tag="v$version"
+
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            if [ -n "${BEFORE:-}" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+              && git cat-file -e "$BEFORE^{commit}" 2>/dev/null \
+              && [ -n "$(git diff --name-only "$BEFORE" "$GITHUB_SHA" -- skills/)" ]; then
+              echo "::error::skills/ changed, but $tag is already released. Raise the version in .claude-plugin/marketplace.json and add a '## <version>' section to CHANGELOG.md."
+              exit 1
+            fi
+            echo "$tag is already released; nothing to do."
+            exit 0
+          fi
+
+          awk -v v="$version" '
+            $0 ~ "^## " { if (found) exit; if ($2 == v) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::CHANGELOG.md has no '## $version' section. Add one with the release notes."
+            exit 1
+          fi
+
+          gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes-file notes.md

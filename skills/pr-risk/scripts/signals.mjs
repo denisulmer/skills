@@ -4,6 +4,12 @@
 // model; this script only reports facts that can be counted.
 //
 //   node signals.mjs --base <ref> --head <ref> [--repo <path>] [--profile <file>|none]
+//   node signals.mjs --which-profile --base <ref> [--repo <path>]   the profile that applies, with its text
+//
+// Profiles, first match wins: --profile <file>; ~/.claude/pr-profiles/*.md whose `remotes` matches a remote
+// URL or whose `paths` names the main checkout (so every worktree of a repo finds the same one); the
+// repository's own .claude/pr-profile.md as committed on --base, never the head, so a change cannot
+// loosen the rules it is scored by.
 //
 // Rule semantics: a floor applies when ANY non-test file matches (one risky file is enough);
 // a cap or an adjustment applies only when EVERY changed file matches (a discount must not
@@ -12,15 +18,10 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
 
-const here = dirname(fileURLToPath(import.meta.url));
-// Your own profiles first: they survive plugin updates and stay out of this (public) library.
-const PROFILE_DIRS = [
-  join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'pr-risk', 'profiles'),
-  join(here, '..', 'profiles'),
-];
+const USER_PROFILES = join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'pr-profiles');
+const REPO_PROFILE = '.claude/pr-profile.md';
 
 const TEST_FILE = /(^|\/)(tests?|__tests__|specs?)\/|\.(test|spec)\.[cm]?[jt]sx?$|[^/]*Tests?\/|Tests?\.cs$/i;
 
@@ -59,6 +60,14 @@ function git(repo, args) {
   return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
 }
 
+function tryGit(repo, args) {
+  try {
+    return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch {
+    return null;
+  }
+}
+
 // Minimal glob: ** spans directories, * and ? stay inside one segment, {a,b} alternates.
 function globToRegExp(glob) {
   let out = '';
@@ -92,44 +101,60 @@ function compileRule(rule, source) {
   return { ...rule, source, matches };
 }
 
-function loadProfile(repo, profileOpt) {
+const listField = (text, field) =>
+  [...(text.match(new RegExp(`^${field}:\\s*\\n((?:\\s+-\\s+.+\\n?)+)`, 'm'))?.[1] ?? '').matchAll(/-\s+(.+)/g)].map((m) => m[1].trim());
+
+const samePath = (a, b) => {
+  const norm = (p) => resolve(p.replace(/^~(?=$|[/\\])/, homedir())).replace(/\\/g, '/').replace(/\/+$/, '');
+  return process.platform === 'win32' ? norm(a).toLowerCase() === norm(b).toLowerCase() : norm(a) === norm(b);
+};
+
+function parseProfile(text, source, file) {
+  const json = text.match(/```json rules\s*\n([\s\S]*?)```/)?.[1];
+  if (!json) throw new Error(`${file} has no \`\`\`json rules block`);
+  return { name: text.match(/^name:\s*(.+)$/m)?.[1]?.trim() ?? file, source, file, text, rules: JSON.parse(json) };
+}
+
+function loadProfile(repo, base, profileOpt) {
   if (profileOpt === 'none') return null;
+  if (typeof profileOpt === 'string') return parseProfile(readFileSync(profileOpt, 'utf8'), 'explicit', profileOpt);
+
+  // Every remote's URL without user names, and the main checkout (the parent of the shared git directory,
+  // the same from every worktree).
+  const remotes = (tryGit(repo, ['config', '--get-regexp', '^remote\\..*\\.url$']) ?? '')
+    .split('\n').filter(Boolean).map((line) => line.split(' ').slice(1).join(' ').replace(/\/\/[^@/]+@/, '//'));
+  const commonDir = tryGit(repo, ['rev-parse', '--path-format=absolute', '--git-common-dir'])?.trim();
+  const mainCheckout = commonDir ? dirname(commonDir) : null;
+
   let files = [];
-  if (typeof profileOpt === 'string') files = [profileOpt];
-  else {
-    for (const dir of PROFILE_DIRS) {
-      try {
-        files.push(...readdirSync(dir).filter((f) => f.endsWith('.md') && f !== 'README.md').map((f) => join(dir, f)));
-      } catch {
-        // Directory missing: nothing to add.
-      }
-    }
-  }
-  let remote = '';
   try {
-    remote = git(repo, ['remote', 'get-url', 'origin']).trim().replace(/\/\/[^@/]+@/, '//');
+    files = readdirSync(USER_PROFILES).filter((f) => f.endsWith('.md')).map((f) => join(USER_PROFILES, f));
   } catch {
-    // No origin: only an explicit --profile can apply.
+    // No user profiles.
   }
   for (const file of files) {
     const text = readFileSync(file, 'utf8');
-    const remotes = [...(text.match(/^remotes:\s*\n((?:\s+-\s+.+\n)+)/m)?.[1] ?? '').matchAll(/-\s+(.+)/g)].map((m) => m[1].trim());
-    if (typeof profileOpt !== 'string' && !remotes.some((r) => remote.includes(r))) continue;
-    const json = text.match(/```json rules\s*\n([\s\S]*?)```/)?.[1];
-    if (!json) throw new Error(`${file} has no \`\`\`json rules block`);
-    const name = text.match(/^name:\s*(.+)$/m)?.[1]?.trim() ?? file;
-    return { name, file, rules: JSON.parse(json) };
+    const byRemote = listField(text, 'remotes').some((r) => remotes.some((url) => url.includes(r)));
+    const byPath = mainCheckout && listField(text, 'paths').some((p) => samePath(p, mainCheckout));
+    if (byRemote || byPath) return parseProfile(text, 'user', file);
   }
-  return null;
+
+  const committed = base ? tryGit(repo, ['show', `${base}:${REPO_PROFILE}`]) : null;
+  return committed === null ? null : parseProfile(committed, 'repo', `${base}:${REPO_PROFILE}`);
 }
 
 function main() {
   const opts = parseArgs(process.argv.slice(2));
+  const repo = typeof opts.repo === 'string' ? opts.repo : '.';
+  if (opts['which-profile']) {
+    const profile = loadProfile(repo, typeof opts.base === 'string' ? opts.base : null, opts.profile);
+    console.log(JSON.stringify(profile ? { name: profile.name, source: profile.source, file: profile.file, text: profile.text } : null, null, 2));
+    return;
+  }
   if (typeof opts.base !== 'string' || typeof opts.head !== 'string') {
-    console.error('usage: node signals.mjs --base <ref> --head <ref> [--repo <path>] [--profile <file>|none]');
+    console.error('usage: node signals.mjs --base <ref> --head <ref> [--repo <path>] [--profile <file>|none]\n       node signals.mjs --which-profile --base <ref> [--repo <path>]');
     process.exit(2);
   }
-  const repo = typeof opts.repo === 'string' ? opts.repo : '.';
   const mergeBase = git(repo, ['merge-base', opts.base, opts.head]).trim();
   const range = [mergeBase, opts.head];
 
@@ -151,7 +176,7 @@ function main() {
     return;
   }
 
-  const profile = loadProfile(repo, opts.profile);
+  const profile = loadProfile(repo, opts.base, opts.profile);
   // A profile rule with the same id as a default replaces that default.
   const profileRules = profile?.rules ?? [];
   const rules = [
@@ -219,7 +244,7 @@ function main() {
     base: opts.base,
     head: opts.head,
     mergeBase,
-    profile: profile ? { name: profile.name, file: profile.file } : null,
+    profile: profile ? { name: profile.name, source: profile.source, file: profile.file } : null,
     totals: {
       files: changed.length,
       added: changed.reduce((n, f) => n + f.added, 0),

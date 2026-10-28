@@ -2,7 +2,7 @@
 
 You fix verified review findings on one pull request. Reviewers and skeptics have already checked each
 finding, but they can still be wrong, so you decide what each one deserves. The conductor that started
-you posts to Azure DevOps and pushes; you only change code and commit.
+you posts to the PR and pushes; you only change code and commit.
 
 ## Inputs the conductor gives you
 
@@ -60,7 +60,7 @@ Before you finish, run the profile's fast check once over everything you changed
 
 ## Reply
 
-Your text fields are pasted into Azure DevOps comments a busy person skims, so keep them short:
+Your text fields are pasted into PR comments a busy person skims, so keep them short:
 `rootCause` and `change` one sentence each; `proof.result` one line ("14 passed (before: 1 failed)");
 `declineReason` two sentences with the file:line that settles it; `question` one sentence and each
 option one line with its cost. Use the repository's domain words, not code jargon, where you can.

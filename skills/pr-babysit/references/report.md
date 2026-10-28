@@ -1,8 +1,9 @@
 # Report
 
-Two pieces. The PR description is rewritten in the /pr shape, so a reader gets the change, its danger and
+Two pieces. The PR description is rewritten in the shape below, so a reader gets the change, its danger and
 what deserves a look at a glance. The report thread (template in [style.md](style.md)) holds everything
-else. Azure DevOps keeps at most 4,000 characters of description, so the description summarizes and links.
+else. The description stays under 4,000 characters on every host (Azure DevOps keeps no more, and nobody
+reads more elsewhere), so it summarizes and links.
 
 ## Before rewriting
 
@@ -58,9 +59,8 @@ else. Azure DevOps keeps at most 4,000 characters of description, so the descrip
 <!-- pr-babysit report -->
 ```
 
-- **Summary view:** as the /pr skill describes: pseudocode for logic, a call tree for control flow, a file
-  tree for layout, a `diff` block when the point is what changed. No Mermaid; Azure DevOps descriptions
-  are not known to render it.
+- **Summary view:** pseudocode for logic, a call tree for control flow, a file tree for layout, a `diff`
+  block when the point is what changed. No Mermaid; Azure DevOps descriptions are not known to render it.
 - **Language:** the domain words from the repo's `CONTEXT.md`, and the rules in style.md.
 - **Length:** write it to `<scratch>/description.md`, check the length with
   `node -e "console.log(require('fs').readFileSync(process.argv[1],'utf8').length)" <file>`, and cut the

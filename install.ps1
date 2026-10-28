@@ -21,3 +21,13 @@ foreach ($skill in Get-ChildItem -Path $source -Directory) {
     New-Item -ItemType Junction -Path $link -Target $skill.FullName | Out-Null
     Write-Output "linked  $($skill.Name)"
 }
+
+# Junctions into this library whose skill was renamed or removed. Deleting the DirectoryInfo removes only
+# the link, never a target's files.
+foreach ($item in Get-ChildItem -Path $target -Directory -Force | Where-Object LinkType -eq 'Junction') {
+    $into = @(@($item.Target) | Where-Object { $_ -like "$source\*" })
+    if ($into -and -not (Test-Path -LiteralPath $into[0])) {
+        $item.Delete()
+        Write-Output "removed $($item.Name) (no longer in this library)"
+    }
+}
