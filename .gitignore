@@ -1,0 +1,5 @@
+# Eval runs and scratch output
+workspaces/
+node_modules/
+# Evals that run against private repositories; kept local
+skills/pr-risk/evals/

@@ -1,0 +1,31 @@
+{
+  "name": "denisulmer",
+  "owner": {
+    "name": "Denis Ulmer",
+    "url": "https://github.com/denisulmer"
+  },
+  "metadata": {
+    "description": "Denis Ulmer's Claude Code skills"
+  },
+  "plugins": [
+    {
+      "name": "ado-pr",
+      "source": "./",
+      "description": "Azure DevOps pull requests from review to merge: PR threads and policies from the terminal, a 0-100 risk score, tiered review rounds with fixes, and a watched merge.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Denis Ulmer"
+      },
+      "homepage": "https://github.com/denisulmer/skills",
+      "repository": "https://github.com/denisulmer/skills",
+      "keywords": ["azure-devops", "pull-request", "code-review", "merge"],
+      "strict": false,
+      "skills": [
+        "./skills/ado-pr",
+        "./skills/pr-risk",
+        "./skills/pr-babysit",
+        "./skills/pr-merge"
+      ]
+    }
+  ]
+}
