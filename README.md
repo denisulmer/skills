@@ -61,3 +61,7 @@ merge.
 Links every folder under `skills/` into `~/.claude/skills/` with a directory junction, so edits here are
 live in the next Claude Code session (skills then have no `ado-pr:` prefix). Use this or the plugin, not
 both, or every skill shows up twice.
+
+## License
+
+[MIT](LICENSE)

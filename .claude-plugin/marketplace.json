@@ -18,6 +18,7 @@
       },
       "homepage": "https://github.com/denisulmer/skills",
       "repository": "https://github.com/denisulmer/skills",
+      "license": "MIT",
       "keywords": ["azure-devops", "pull-request", "code-review", "merge"],
       "strict": false,
       "skills": [
