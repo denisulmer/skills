@@ -97,5 +97,6 @@ Whenever you have to wait for the user, cancel auto-merge while you wait, and se
 - Remove the worktree babysit-pr created (`git -C <repo> worktree remove <wt>`) once
   `git -C <wt> status --porcelain` is empty. Leave any other worktree alone.
 - When the PR has a `pr-babysit:triage` thread, record it: babysit-pr's rounds.md §5, `measure.mjs pr` with
-  `--outcome merged`. A failing metrics script never holds up the merge; say so in one line.
+  `--outcome merged --merge-commit <the merge commit>`, plus `--commits <n>` after a rebase or fast-forward
+  merge of n commits (the escape scan traces later fixes back to the PR through them). A failing metrics script never holds up the merge; say so in one line.
 - Tell the user with the last Merge progress line, and send the "merged" push notification.

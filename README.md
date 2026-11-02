@@ -13,7 +13,7 @@ My own Claude Code skills. I write them myself so I know what each one does.
 | [score-pr](skills/score-pr/SKILL.md) | Scores a PR 0-100 from blast radius and one-way/two-way door, names the review tier |
 | [babysit-pr](skills/babysit-pr/SKILL.md) | Takes a PR from review to merge: tiered review rounds recorded as PR threads, fixes with proof, decisions put to you, a report in the description |
 | [merge-pr](skills/merge-pr/SKILL.md) | Merges a PR and watches it land: auto-merge, failed builds, conflicts, approvals, cleanup |
-| [measure-prs](skills/measure-prs/SKILL.md) | Shows what the reviews cost and found, per tier, round and lens, and proposes tier changes backed by the numbers |
+| [measure-prs](skills/measure-prs/SKILL.md) | Shows what the reviews cost and found, per tier, round and lens, finds defects that escaped review (you confirm each), and proposes tier changes backed by the numbers |
 
 They ship together as the `denisulmer-skills` plugin, because they call each other. From an idea to merged
 code: `spec-feature` → (your approval) → `build-feature` → `babysit-pr` → (your "merge") → `merge-pr`, and you

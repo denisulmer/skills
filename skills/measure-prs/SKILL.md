@@ -1,6 +1,6 @@
 ---
 name: measure-prs
-description: Measure what babysit-pr runs cost and what they found - tokens, wall time and agents per round, findings kept and refuted per reviewer lens, fixes, decisions, failed rounds - from the local metrics ledger, and propose changes to the review tiers or the repository profile backed by those numbers. Use when the user asks what the PR reviews cost, whether later rounds or a lens are worth it, how the tiers should be tuned, "measure", "metrics", "stats" or "how is babysit doing", or wants to import metrics from PRs reviewed in another session.
+description: Measure what babysit-pr runs cost and what they found - tokens, wall time and agents per round, findings kept and refuted per reviewer lens, fixes, decisions, failed rounds - from the local metrics ledger, find the defects that escaped review (later fixes traced back to reviewed PRs, each confirmed by the user), and propose changes to the review tiers or the repository profile backed by those numbers. Use when the user asks what the PR reviews cost, whether later rounds or a lens are worth it, how the tiers should be tuned, "measure", "metrics", "stats", "how is babysit doing" or "what slipped through review", or wants to import metrics from PRs reviewed in another session.
 ---
 
 # Measure PR reviews
@@ -19,14 +19,24 @@ session transcripts and recorded as weighted input-token equivalents (cache writ
 
 1. **Fill the ledger.** For PRs reviewed in another session or on another machine, read their markers
    back: `<measure> import --repo <checkout> --pr <id|url>`. Records are keyed, so importing twice is harmless.
-2. **Report.** `<measure> report --repo <checkout>` (or `--all`, and `--since YYYY-MM-DD` to compare
+2. **Escapes.** `git -C <checkout> fetch origin`, then `<measure> escapes --repo <checkout>` (`--since` to
+   narrow it). It lists candidates: a later fix, hotfix or revert on the default branch whose changed lines a
+   reviewed PR wrote (`share` = the part of the fix's lines that trace back to it). A trace is not proof: the
+   fix may change behaviour on purpose. Put each candidate to the user, one AskUserQuestion at a time: the
+   PR, the fix commit's subject and link, the lines it rewrote (`git show --stat <fix>` and the hunks that
+   touch the PR's lines), and the options **escaped** (review should have caught it), **not an escape**
+   (new requirement, deliberate change, unrelated) or **skip for now**. Record each answer with
+   `<measure> escape --repo <checkout> --pr <id> --fix <sha> --confirm|--dismiss --note "<their reason>"`;
+   the scan never asks about it again. `unresolved` lists merged PRs whose merge commit was not found
+   (fetch, or the merge subject names no PR number); say so in one line.
+3. **Report.** `<measure> report --repo <checkout>` (or `--all`, and `--since YYYY-MM-DD` to compare
    before and after a release; each record names the plugin `version` that produced it). Show the
    markdown it prints. When the user wants a chart, chart from `--json`.
-3. **Read the signals.** The report's Signals section lists facts with enough data behind them (a quiet
-   later round, a lens that rarely finds anything, skeptics that rarely refute or refute most, rounds
+4. **Read the signals.** The report's Signals section lists facts with enough data behind them (a quiet
+   later round, a lens that rarely finds anything, a tier whose merged PRs escape often or never, skeptics that rarely refute or refute most, rounds
    lost to usage limits, a fixer that declines often). No signals means there is not enough data yet:
    say how many rounds are recorded and stop there rather than guessing.
-4. **Propose.** For each signal, one proposal: the change, the numbers behind it, what it would save,
+5. **Propose.** For each signal, one proposal: the change, the numbers behind it, what it would save,
    and what it risks. Proposals go to one of two places:
    - **The tiers** (`<base>/../babysit-pr/references/tiers.json` in the skills repository): rounds,
      lenses, `followUpLenses`, skeptic counts and models, effort, `severityBar`.
@@ -35,7 +45,8 @@ session transcripts and recorded as weighted input-token equivalents (cache writ
    Recommend at most three, strongest evidence first. Change nothing yourself: the user decides, and a
    change to the skills repository is a release.
 
-## What the numbers can't say yet
+## What the numbers can't say
 
-Whether review missed something only shows after the merge. Until the escape scan exists, ask the user
-for bugs they traced back to a reviewed PR, and weigh proposals that remove review accordingly.
+Escapes only count what a later fix commit reveals: a bug nobody has fixed yet, or one fixed without a
+`fix:` or `hotfix` subject, is invisible. Weigh proposals that remove review against how long the tier's PRs
+have been merged, and ask the user about bugs they know of that the scan cannot see.

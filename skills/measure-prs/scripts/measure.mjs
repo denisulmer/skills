@@ -6,10 +6,13 @@
 //                           --started <iso> --scratch <dir> [--ended <iso>] [--session <id>]
 //   node measure.mjs pr     --repo <checkout> --pr <id> --pr-url <url> --tier <t> --score <n> --outcome <o>
 //                           --started <iso> --scratch <dir> [--ended <iso>] [--session <id>]
+//                           [--merge-commit <sha>] [--commits <n>]   n: commits a rebase or fast-forward merge landed
 //   node measure.mjs phase  --repo <checkout> --name spec|build --branch <branch> --started <iso> --scratch <dir>
 //                           [--pr <id>] [--ended <iso>] [--session <id>]
 //   node measure.mjs tokens --scratch <dir> --started <iso> [--ended <iso>] [--session <id>]
 //   node measure.mjs import --repo <checkout> --pr <id|url>
+//   node measure.mjs escapes --repo <checkout> [--branch origin/<default>] [--since YYYY-MM-DD] [--limit 300]
+//   node measure.mjs escape  --repo <checkout> --pr <id|url> --fix <sha> --confirm|--dismiss [--note "…"]
 //   node measure.mjs report [--repo <checkout> | --all] [--since YYYY-MM-DD] [--json]
 //
 // `round` reads <scratch>/round-<n>-result.json (the review workflow's result) and every
@@ -22,6 +25,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { scanEscapes } from './escapes.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude');
@@ -76,7 +80,7 @@ export function repoSlug(repo) {
 }
 
 const ledgerFile = (slug) => join(LEDGER_DIR, `${slug}.jsonl`);
-const recordKey = (r) => `${r.kind}|${r.prUrl ?? r.pr ?? r.branch}|${r.round ?? r.name ?? ''}`;
+const recordKey = (r) => `${r.kind}|${r.prUrl ?? r.pr ?? r.branch}|${r.round ?? r.name ?? r.fix ?? ''}`;
 
 function readLedger(file) {
   if (!existsSync(file)) return [];
@@ -266,6 +270,8 @@ function cmdPr(opts) {
     ...base,
     score: opts.score !== undefined ? Number(opts.score) : null,
     outcome: opts.outcome,
+    mergeCommit: typeof opts['merge-commit'] === 'string' ? opts['merge-commit'] : null,
+    commits: typeof opts.commits === 'string' ? Number(opts.commits) : null,
     rounds: rounds.filter((r) => r.valid).length,
     invalidRounds: rounds.filter((r) => !r.valid).length,
     found: Object.fromEntries(SEVERITIES.slice(1).map((s) => [s, rounds.reduce((t, r) => t + (r.found?.[s] ?? 0), 0)])),
@@ -297,6 +303,43 @@ function cmdImport(opts) {
   for (const r of records) (byFile[ledgerFile(r.repo)] ??= []).push(r);
   for (const [file, list] of Object.entries(byFile)) upsert(file, list);
   return { imported: records.length, ledgers: Object.keys(byFile) };
+}
+
+// Candidates for defects that escaped review (escapes.mjs); each needs the user's yes or no.
+function defaultBranch(repo) {
+  const head = git(repo, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
+  if (head) return head;
+  for (const name of ['origin/main', 'origin/master']) if (git(repo, ['rev-parse', '--verify', '--quiet', name])) return name;
+  throw new Error('cannot tell the default branch (no origin/HEAD, origin/main or origin/master): pass --branch <ref>');
+}
+
+function cmdEscapes(opts) {
+  need(opts, 'repo');
+  const branch = typeof opts.branch === 'string' ? opts.branch : defaultBranch(opts.repo);
+  const slug = repoSlug(opts.repo);
+  const records = readLedger(ledgerFile(slug));
+  const result = scanEscapes({ repo: opts.repo, branch, since: typeof opts.since === 'string' ? opts.since : null, records, limit: Number(opts.limit ?? 300) });
+  // The report trusts "no escapes" only after a scan that left nothing undecided.
+  const now = new Date().toISOString();
+  upsert(ledgerFile(slug), [{ v: 1, kind: 'escape-scan', repo: slug, pr: 'scan', started: now, ended: now, branch, since: opts.since ?? null, reviewed: result.reviewed, candidates: result.candidates.length, truncated: result.truncated, unresolved: result.unresolved.length }]);
+  return { branch, ...result };
+}
+
+// The user's verdict on one candidate. Dismissed ones are kept too, so the scan never asks twice.
+function cmdEscape(opts) {
+  need(opts, 'repo', 'pr', 'fix');
+  if (!opts.confirm === !opts.dismiss) throw new Error('pass exactly one of --confirm or --dismiss');
+  const slug = repoSlug(opts.repo);
+  const pr = readLedger(ledgerFile(slug)).find((r) => r.kind === 'pr' && (String(r.pr) === String(opts.pr) || r.prUrl === opts.pr));
+  if (!pr) throw new Error(`no PR record for ${opts.pr} in ${ledgerFile(slug)}`);
+  const fix = git(opts.repo, ['rev-parse', opts.fix]) ?? opts.fix;
+  const record = {
+    v: 1, kind: 'escape', repo: slug, pr: pr.pr, prUrl: pr.prUrl ?? null, tier: pr.tier, fix,
+    subject: git(opts.repo, ['show', '-s', '--format=%s', fix]), status: opts.confirm ? 'confirmed' : 'dismissed',
+    note: typeof opts.note === 'string' ? opts.note : null, started: pr.ended ?? pr.started, decided: new Date().toISOString(), version: pluginVersion(),
+  };
+  upsert(ledgerFile(slug), [record]);
+  return { record };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -340,8 +383,19 @@ export function aggregate(records, { since } = {}) {
     const t = tiers[p.tier];
     if (!t) continue;
     t.finished++;
+    if (p.outcome === 'merged') t.merged = (t.merged ?? 0) + 1;
     if (p.tokens?.source === 'transcript') t.prTokens.push(p.tokens.weighted);
   }
+  // Escapes count against the PR, whenever the fix came: the record's date is the PR's end, so --since
+  // selects escapes by the PR they came from, like every other number here.
+  for (const e of recs.filter((r) => r.kind === 'escape' && r.status === 'confirmed')) {
+    const t = tiers[e.tier];
+    if (t) (t.escaped ??= new Set()).add(e.prUrl ?? e.pr);
+  }
+  // "No escapes" means something only after a scan that left nothing to decide.
+  const lastScan = records.filter((r) => r.kind === 'escape-scan').sort((a, b) => (a.ended ?? '').localeCompare(b.ended ?? '')).at(-1) ?? null;
+  const scanSettled = !!lastScan && lastScan.candidates === 0 && !lastScan.truncated;
+
   // Facts a tuning proposal can rest on. Thresholds are deliberately conservative: a signal needs data.
   const signals = [];
   for (const [tier, t] of Object.entries(tiers)) {
@@ -356,18 +410,21 @@ export function aggregate(records, { since } = {}) {
     }
     const judged = t.kept + t.refuted;
     if (judged >= 20 && t.refuted / judged < 0.1) signals.push({ tier, kind: 'idle-skeptics', text: `skeptics refuted only ${pct(t.refuted, judged)} of ${judged} findings` });
+    const escaped = t.escaped?.size ?? 0;
+    if (t.merged >= 5 && escaped / t.merged >= 0.2) signals.push({ tier, kind: 'escapes', text: `${escaped} of ${t.merged} merged PRs had a defect that escaped review` });
+    if (t.merged >= 10 && escaped === 0 && scanSettled) signals.push({ tier, kind: 'no-escapes', text: `none of ${t.merged} merged PRs had a confirmed escape (as far as fix commits tell)` });
     if (t.fixed + t.declined >= 10 && t.declined / (t.fixed + t.declined) > 0.4) signals.push({ tier, kind: 'declined-often', text: `the fixer declined ${pct(t.declined, t.fixed + t.declined)} of the findings it handled` });
   }
-  return { rounds: rounds.length, prs: prs.length, tiers, phases, signals };
+  return { rounds: rounds.length, prs: prs.length, tiers, phases, signals, lastScan };
 }
 
 function renderReport(agg, scopeLabel) {
   const lines = [`# PR review metrics · ${scopeLabel}`, '', `${agg.prs} PRs finished, ${agg.rounds} rounds recorded. Tokens are weighted input-token equivalents.`, ''];
   const hasPhases = Object.keys(agg.phases ?? {}).length > 0;
   if (!agg.rounds && !hasPhases) return [...lines, 'No rounds recorded yet. babysit-pr records one per round from version 4.0.0 on; `import` reads markers from older PRs.'].join('\n');
-  if (agg.rounds) lines.push('## Per tier', '', '| Tier | PRs | Rounds | Median min/round | Median tokens/round | Median tokens/PR | Kept | Refuted | Fixed | Declined | Decisions |', '|---|---|---|---|---|---|---|---|---|---|---|');
+  if (agg.rounds) lines.push('## Per tier', '', '| Tier | PRs | Rounds | Median min/round | Median tokens/round | Median tokens/PR | Kept | Refuted | Fixed | Declined | Decisions | Escaped |', '|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (const [tier, t] of Object.entries(agg.tiers)) {
-    lines.push(`| ${tier} | ${t.prs.size} | ${t.rounds}${t.invalid ? ` (+${t.invalid} failed)` : ''} | ${median(t.minutes) ?? '–'} | ${M(median(t.tokens))} | ${M(median(t.prTokens))} | ${t.kept} | ${t.refuted} | ${t.fixed} | ${t.declined} | ${t.escalated} |`);
+    lines.push(`| ${tier} | ${t.prs.size} | ${t.rounds}${t.invalid ? ` (+${t.invalid} failed)` : ''} | ${median(t.minutes) ?? '–'} | ${M(median(t.tokens))} | ${M(median(t.prTokens))} | ${t.kept} | ${t.refuted} | ${t.fixed} | ${t.declined} | ${t.escalated} | ${t.merged ? `${t.escaped?.size ?? 0} of ${t.merged}` : '–'} |`);
   }
   for (const [tier, t] of Object.entries(agg.tiers)) {
     lines.push('', `## ${tier}`, '', '| Round | Rounds | Not clean | Median tokens |', '|---|---|---|---|');
@@ -381,6 +438,9 @@ function renderReport(agg, scopeLabel) {
     lines.push('', '## Before review', '', '| Phase | Runs | Median min | Median tokens |', '|---|---|---|---|');
     for (const [name, x] of Object.entries(agg.phases)) lines.push(`| ${name} | ${x.n} | ${median(x.minutes) ?? '–'} | ${M(median(x.tokens))} |`);
   }
+  lines.push('', agg.lastScan
+    ? `Escape scan: last run ${agg.lastScan.ended.slice(0, 10)}, ${agg.lastScan.candidates} candidate(s) waiting for a decision${agg.lastScan.truncated ? `, ${agg.lastScan.truncated} fix commit(s) not scanned yet` : ''}.`
+    : 'Escape scan: never run, so the Escaped column counts nothing yet.');
   lines.push('', '## Signals', '');
   if (!agg.signals.length) lines.push('None yet: each signal needs at least 5 rounds or 10 to 20 findings behind it.');
   for (const s of agg.signals) lines.push(`- **${s.tier}** · ${s.kind}: ${s.text}`);
@@ -394,7 +454,7 @@ function cmdReport(opts) {
   const records = files.flatMap(readLedger);
   const agg = aggregate(records, { since: opts.since });
   const label = opts.all ? 'all repositories' : basename(files[0], '.jsonl');
-  if (opts.json) return { ...agg, tiers: Object.fromEntries(Object.entries(agg.tiers).map(([k, t]) => [k, { ...t, prs: t.prs.size }])) };
+  if (opts.json) return { ...agg, tiers: Object.fromEntries(Object.entries(agg.tiers).map(([k, t]) => [k, { ...t, prs: t.prs.size, escaped: t.escaped?.size ?? 0 }])) };
   return renderReport(agg, `${label}${opts.since ? ` since ${opts.since}` : ''}`);
 }
 
@@ -404,6 +464,8 @@ const COMMANDS = {
   round: cmdRound,
   pr: cmdPr,
   phase: cmdPhase,
+  escapes: cmdEscapes,
+  escape: cmdEscape,
   import: cmdImport,
   report: cmdReport,
   tokens: (opts) => { need(opts, 'started'); return countTokens(opts); },
@@ -413,7 +475,7 @@ if (process.argv[1] && resolve(process.argv[1]).toLowerCase() === fileURLToPath(
   const opts = parseArgs(process.argv.slice(2));
   const command = COMMANDS[opts._[0]];
   if (!command) {
-    console.error('usage: measure.mjs round | pr | phase | tokens | import | report  (see the header of this file)');
+    console.error('usage: measure.mjs round | pr | phase | tokens | import | escapes | escape | report  (see the header of this file)');
     process.exit(2);
   }
   try {

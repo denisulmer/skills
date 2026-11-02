@@ -2,6 +2,24 @@
 
 Each `## <version>` section becomes the notes of the GitHub release `v<version>`. Newest first.
 
+## 4.3.0
+
+`measure-prs` now finds defects that escaped review, so the tiers can be tuned on quality, not only on
+cost. Nothing to do but update.
+
+- **Escape scan:** `measure.mjs escapes` walks later `fix:`, `hotfix` and `revert` commits on the default
+  branch and blames the lines each one rewrote back to the reviewed PR that wrote them (a revert of a PR's
+  commit counts directly). Each candidate goes to you once: escaped or not, with a note.
+  `measure.mjs escape --confirm|--dismiss` records it, and the scan never asks again.
+- **In the report:** an Escaped column per tier (merged PRs with a confirmed escape), and signals for tiers
+  whose PRs escape often or never.
+- `merge-pr` records the merge commit (and, for a rebase or fast-forward merge, how many commits landed)
+  with the PR, so the scan finds the PR's commits exactly; older records fall back to the hosts' merge
+  subjects (`Merged PR 123`, `#123`, `!123`). Fixes are recognised behind those prefixes too, and a fix
+  merged as a merge commit counts once.
+- The report says when the scan last ran and what is still undecided, and only calls a tier escape-free
+  after a scan that left nothing to decide.
+
 ## 4.2.0
 
 The pipeline now starts at the idea: `spec-feature` turns it into an approved spec, `build-feature` builds it

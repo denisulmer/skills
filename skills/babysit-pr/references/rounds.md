@@ -102,7 +102,7 @@ blocks the summary; mention it in one line.
 
 When the PR ends, record it once: `node <base>/../measure-prs/scripts/measure.mjs pr --repo <wt> --pr <id>
 --pr-url <webUrl> --tier <tier> --score <score> --outcome merged|accepted|stopped|abandoned --started <the
-triage's published time from state> --scratch <scratch>`. Post its marker as a reply on the report thread
+triage's published time from state> --scratch <scratch> [--merge-commit <sha> [--commits <n>]]`. Post its marker as a reply on the report thread
 (or, without one, on the triage thread): `🤖 Review metrics recorded.` and the marker,
 `--key pr-babysit:metrics`, status `closed`.
 
