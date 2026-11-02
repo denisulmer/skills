@@ -43,6 +43,9 @@ need them cannot be missed.
 Statuses below are pr-host's; on GitHub and GitLab the resolved ones (`fixed`, `wontFix`, `byDesign`,
 `closed`) resolve the thread.
 
+`scripts/babysit.mjs` renders the triage, finding, reply and round summary templates below; a change to
+one of them goes into both places. Its bodies also end with a hidden `<!-- babysit {...} -->` state marker.
+
 ### Triage (`pr-babysit:triage`, status `closed`)
 
 ~~~markdown

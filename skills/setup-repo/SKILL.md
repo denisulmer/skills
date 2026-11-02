@@ -31,7 +31,9 @@ Run everything from the repository (any worktree of it works the same).
 
 `<signals> --which-profile --base origin/<default branch>` (the branch itself when there is no remote).
 When one applies, show its name, `source` (user or repo) and danger-map rule ids, and ask: keep it,
-update it, or replace it. Keeping it ends the setup.
+update it, or replace it. Keeping it ends the setup. A profile without a ```` ```json checks ```` block
+still works, but the checks are then prose the agents interpret: offer to add the block (step 3's Checks
+bullet) as the one update worth making.
 
 ## 3. Draft
 
@@ -47,9 +49,12 @@ the CI configuration and the scripts it calls.
   caps or negative adjustments. Reuse a default's id only to replace it.
 - **Judgment notes.** This repository's one-way doors, its costly two-way doors, and blast-radius words
   in its own domain language.
-- **Checks.** The real commands for a fast check, per area, everything, and a live smoke test if one
-  exists, from package scripts, Makefiles, `scripts/` and the CI steps. Run the fast check once; a check
-  that does not run is worse than none.
+- **Checks.** A ```` ```json checks ```` block ([the fields](references/profile-format.md#check-fields)):
+  `fast` checks per area, each with the globs that make it apply, so a change runs only what it touches;
+  one `full` check that matches what the PR pipeline runs; a `smoke` check if a live one exists. Take the
+  commands from package scripts, Makefiles, `scripts/` and the CI steps. Then run every fast check once:
+  `node <base>/scripts/checks.mjs run --base origin/<default branch> --all --profile <scratch>/pr-profile.md`.
+  Fix or drop any that fails on a clean branch; a check that does not run is worse than none.
 - **Conventions a fix must keep.** Changelog or release-note fragments, generated code to regenerate,
   translations, anything CI enforces that a quick fix would miss.
 - **Merge.** The strategy the history shows (`git log --first-parent`): merge commits → `merge`; one

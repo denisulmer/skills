@@ -15,15 +15,7 @@
 // a cap or an adjustment applies only when EVERY changed file matches (a discount must not
 // cover a change that also reaches somewhere else).
 
-import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-
-const USER_PROFILES = join(process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude'), 'pr-profiles');
-const REPO_PROFILE = '.claude/pr-profile.md';
-
-const TEST_FILE = /(^|\/)(tests?|__tests__|specs?)\/|\.(test|spec)\.[cm]?[jt]sx?$|[^/]*Tests?\/|Tests?\.cs$/i;
+import { changedFiles, fileMatcher, git, loadProfile, parseArgs, TEST_FILE } from '../../setup-repo/scripts/profile.mjs';
 
 // Defaults that hold in most repositories. A profile adds rules, and replaces a default by reusing its id.
 const DEFAULT_RULES = [
@@ -46,101 +38,8 @@ const DESTRUCTIVE = [
 ];
 const DESTRUCTIVE_FLOOR = 75;
 
-function parseArgs(argv) {
-  const opts = {};
-  for (let i = 0; i < argv.length; i++) {
-    if (!argv[i].startsWith('--')) continue;
-    const next = argv[i + 1];
-    opts[argv[i].slice(2)] = next === undefined || next.startsWith('--') ? true : (i++, next);
-  }
-  return opts;
-}
-
-function git(repo, args) {
-  return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
-}
-
-function tryGit(repo, args) {
-  try {
-    return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
-  } catch {
-    return null;
-  }
-}
-
-// Minimal glob: ** spans directories, * and ? stay inside one segment, {a,b} alternates.
-function globToRegExp(glob) {
-  let out = '';
-  for (let i = 0; i < glob.length; i++) {
-    const ch = glob[i];
-    if (ch === '*') {
-      if (glob[i + 1] === '*') {
-        const slash = glob[i + 2] === '/';
-        out += slash ? '(?:.*/)?' : '.*';
-        i += slash ? 2 : 1;
-      } else out += '[^/]*';
-    } else if (ch === '?') out += '[^/]';
-    else if (ch === '{') {
-      const end = glob.indexOf('}', i);
-      out += `(?:${glob.slice(i + 1, end).split(',').map((part) => part.replace(/[.+^$()|[\]\\]/g, '\\$&')).join('|')})`;
-      i = end;
-    } else out += ch.replace(/[.+^$()|[\]\\]/g, '\\$&');
-  }
-  return new RegExp(`^${out}$`);
-}
-
 function compileRule(rule, source) {
-  const include = (rule.match ?? []).map(globToRegExp);
-  const exclude = (rule.exclude ?? []).map(globToRegExp);
-  const regex = rule.regex ? new RegExp(rule.regex, rule.regexFlags ?? 'i') : null;
-  const matches = (file) => {
-    if (exclude.some((re) => re.test(file))) return false;
-    if (rule.test) return TEST_FILE.test(file);
-    return include.some((re) => re.test(file)) || (regex ? regex.test(file) : false);
-  };
-  return { ...rule, source, matches };
-}
-
-const listField = (text, field) =>
-  [...(text.match(new RegExp(`^${field}:\\s*\\n((?:\\s+-\\s+.+\\n?)+)`, 'm'))?.[1] ?? '').matchAll(/-\s+(.+)/g)].map((m) => m[1].trim());
-
-const samePath = (a, b) => {
-  const norm = (p) => resolve(p.replace(/^~(?=$|[/\\])/, homedir())).replace(/\\/g, '/').replace(/\/+$/, '');
-  return process.platform === 'win32' ? norm(a).toLowerCase() === norm(b).toLowerCase() : norm(a) === norm(b);
-};
-
-function parseProfile(text, source, file) {
-  const json = text.match(/```json rules\s*\n([\s\S]*?)```/)?.[1];
-  if (!json) throw new Error(`${file} has no \`\`\`json rules block`);
-  return { name: text.match(/^name:\s*(.+)$/m)?.[1]?.trim() ?? file, source, file, text, rules: JSON.parse(json) };
-}
-
-function loadProfile(repo, base, profileOpt) {
-  if (profileOpt === 'none') return null;
-  if (typeof profileOpt === 'string') return parseProfile(readFileSync(profileOpt, 'utf8'), 'explicit', profileOpt);
-
-  // Every remote's URL without user names, and the main checkout (the parent of the shared git directory,
-  // the same from every worktree).
-  const remotes = (tryGit(repo, ['config', '--get-regexp', '^remote\\..*\\.url$']) ?? '')
-    .split('\n').filter(Boolean).map((line) => line.split(' ').slice(1).join(' ').replace(/\/\/[^@/]+@/, '//'));
-  const commonDir = tryGit(repo, ['rev-parse', '--path-format=absolute', '--git-common-dir'])?.trim();
-  const mainCheckout = commonDir ? dirname(commonDir) : null;
-
-  let files = [];
-  try {
-    files = readdirSync(USER_PROFILES).filter((f) => f.endsWith('.md')).map((f) => join(USER_PROFILES, f));
-  } catch {
-    // No user profiles.
-  }
-  for (const file of files) {
-    const text = readFileSync(file, 'utf8');
-    const byRemote = listField(text, 'remotes').some((r) => remotes.some((url) => url.includes(r)));
-    const byPath = mainCheckout && listField(text, 'paths').some((p) => samePath(p, mainCheckout));
-    if (byRemote || byPath) return parseProfile(text, 'user', file);
-  }
-
-  const committed = base ? tryGit(repo, ['show', `${base}:${REPO_PROFILE}`]) : null;
-  return committed === null ? null : parseProfile(committed, 'repo', `${base}:${REPO_PROFILE}`);
+  return { ...rule, source, matches: fileMatcher(rule) };
 }
 
 function main() {
@@ -155,22 +54,8 @@ function main() {
     console.error('usage: node signals.mjs --base <ref> --head <ref> [--repo <path>] [--profile <file>|none]\n       node signals.mjs --which-profile --base <ref> [--repo <path>]');
     process.exit(2);
   }
-  const mergeBase = git(repo, ['merge-base', opts.base, opts.head]).trim();
-  const range = [mergeBase, opts.head];
-
-  const files = new Map();
-  for (const line of git(repo, ['diff', '--numstat', '-M', ...range]).split('\n').filter(Boolean)) {
-    const [added, deleted, ...pathParts] = line.split('\t');
-    // Renames print as "dir/{old => new}/file" or "old => new"; keep the new path.
-    const path = pathParts.at(-1).replace(/\{[^}]* => ([^}]*)\}/, '$1').replace(/^.* => /, '').replace(/\/\//g, '/');
-    files.set(path, { path, added: added === '-' ? 0 : Number(added), deleted: deleted === '-' ? 0 : Number(deleted), binary: added === '-', status: 'M' });
-  }
-  for (const line of git(repo, ['diff', '--name-status', '-M', ...range]).split('\n').filter(Boolean)) {
-    const [status, ...paths] = line.split('\t');
-    const entry = files.get(paths.at(-1));
-    if (entry) entry.status = status[0];
-  }
-  const changed = [...files.values()];
+  const { mergeBase, range, files } = changedFiles(repo, opts.base, opts.head);
+  const changed = files;
   if (changed.length === 0) {
     console.log(JSON.stringify({ base: opts.base, head: opts.head, mergeBase, empty: true }, null, 2));
     return;

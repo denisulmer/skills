@@ -2,6 +2,32 @@
 
 Each `## <version>` section becomes the notes of the GitHub release `v<version>`. Newest first.
 
+## 4.1.0
+
+The steps that need no judgment are scripts now, so a run does them the same way every time: the risk
+score, the checks a change must pass, and babysit-pr's bookkeeping. Optional: add a checks block to your
+repository profile (`setup-repo` offers it).
+
+- **Checks as data.** A profile can list its checks in a ```` ```json checks ```` block: glob → command,
+  at level `fast`, `full` or `smoke`. `setup-repo/scripts/checks.mjs` runs the fast checks for the files a
+  change touches and reports pass or fail. The fixer uses it, babysit-pr reruns it on every pushed head
+  before it posts a fix as done, and merge-pr runs `full` only where there is no CI. A profile without
+  the block still works as before.
+- **Risk score by formula.** score-pr answers closed questions (blast-radius band, door, four factors,
+  whether the safety fact is proven) and `score-pr/scripts/score.mjs` computes the points, floor, cap and
+  tier. The same answers always give the same score. Scores can move a few points from before; every
+  calibration example keeps its tier.
+- **babysit-pr bookkeeping.** `babysit-pr/scripts/babysit.mjs` reads the PR back (`state`, with the stop
+  rule as `next`), builds each round's inputs and picks full or delta scope (`args`), and posts the
+  triage, findings, replies and round summary from the templates (`triage`, `record`, `reply`,
+  `summary`). Fixes without an existing commit or proof are held back, and nothing is posted as fixed
+  while the checks fail. A red build is fixed before the round's review (`fix-build`). A person's
+  confirmed comment counts as a finding everywhere, and commits merged in from the target don't force a
+  full round. PRs started earlier still resume; give `args` the intent once with `--intent-file`.
+- `checks.mjs` passes changed file names to the shell single-quoted, so a file name cannot run commands;
+  `{files}` paths are relative to the check's `cwd`.
+- The profile code is shared in `setup-repo/scripts/profile.mjs`; `signals.mjs` gives the same output.
+
 ## 4.0.0
 
 The skills are renamed verb-first, every review now leaves metrics behind, and a new `measure-prs` skill

@@ -69,51 +69,52 @@ its SKILL.md lists the few differences.
    branch names themselves, skip the fetches, and "push" means updating the source branch from the
    worktree (`git -C <worktree> branch -f <source> HEAD` while it is not checked out elsewhere).
 5. **Scratch.** A directory `pr-<id>` in the session scratchpad for comment bodies, args and repro files.
-6. **Resume.** `<pr-host> threads <pr>` and read the `pr-babysit:*` keys: no triage → start at 1; each
-   round summary marks a closed round; finding threads of a round without a summary mean that round is
-   still open (`active` = not handled yet, `pending` = waiting for the user); a report thread means
-   phase 3 ran. Tell the user in one line where you pick up, then continue.
+6. **Resume.** `node <base>/scripts/babysit.mjs state --pr <pr> --repo <worktree>` reads the PR back: tier,
+   closed rounds, open findings, people waiting for an answer, and `next` (what to do and why). Tell the
+   user in one line where you pick up, then continue there.
 
 This runs for hours of wall-clock. If this session has unrelated work in flight, suggest a session of its own.
 
 ## 1. Triage
 
-Run the **score-pr** skill on the PR. Read the tier's entry from
-[references/tiers.json](references/tiers.json). Post the triage thread (Triage template, key
-`pr-babysit:triage`, status `closed`). Send the Triage line in chat and go straight on.
+Run the **score-pr** skill on the PR; it leaves the score as JSON (score.mjs's output). Write the PR's
+intent, two or three sentences from its description and linked work item, to `<scratch>/intent.txt`.
+Then `node <base>/scripts/babysit.mjs triage --pr <pr> --repo <worktree> --risk <score.json> --intent-file
+<scratch>/intent.txt --scratch <scratch>` posts the triage thread; every round reads tier, score and intent
+back from it. Send the Triage line in chat and go straight on.
 
 ## 2. Review rounds
 
-Follow [references/rounds.md](references/rounds.md). Per round:
+Follow [references/rounds.md](references/rounds.md), which names the babysit.mjs command for each step.
+Per round:
 
 1. **Refresh.** Fetch. If `origin/<source>` has commits you did not push, bring them in (fast-forward,
    or merge when diverged; never rebase). Rerun score-pr's `signals.mjs`; if a new floor lifts the score into
-   a higher tier, switch up and say why in the round summary. Never switch down. Note the time: the
-   round's metrics start here.
+   a higher tier, pass it to `args` with the reason. Never switch down.
 2. **Green build.** Review only code that builds. `<pr-host> checks <pr>`, and wait on the blocking
    `build` checks with Monitor (`<pr-host> watch <pr>`, as in merge-pr §3) until each has passed or
    failed on the current head; right after a push, give them a minute to start over. A failure: follow
    merge-pr §4's Failed build (rerun once for infrastructure trouble); a real failure goes to the fixer as
    finding `R<n>-B<k>` (thread, key `pr-babysit:R<n>-B<k>`, the log tail as evidence), and the fix is
    pushed and green before the review starts. No build check at all (plain git, or a host that runs no
-   pipeline for this PR): run the profile's fast check in the worktree instead. The full suite runs in
+   pipeline for this PR): `checks.mjs run` (rounds.md §3) in the worktree instead. The full suite runs in
    the pipeline only, never locally. Review-only mode: don't wait; note a red build in the round summary.
-3. **Review.** Start `Workflow` with the review-round script and the args from rounds.md (§1 says how to
-   launch it and which `scope` to pass: `full` in round 1, `delta` after that). The user's invocation of
+3. **Review.** `babysit.mjs args` builds the round's inputs and picks its scope (`full` in round 1,
+   `delta` after that); start `Workflow` with them (rounds.md §1). The user's invocation of
    this skill is their opt-in to the workflow, and the tier sets its size: a full high or critical round
    runs one to two dozen agents, a delta round a handful. It runs in the background; wait for its
    notification. It returns verified findings, nits, what the skeptics refuted, and verdicts on people's
    comments, or `valid: false` when agents failed: then stop the round (rounds.md §1) and post nothing.
-4. **Record.** One inline thread per finding, a reply on each person's thread.
+4. **Record.** `babysit.mjs record`: one inline thread per finding, a reply on each person's thread.
 5. **Fix** (owner mode). One fixer subagent per round, briefed with
    [references/fixer.md](references/fixer.md). It commits one finding per commit and returns a decision
-   for each: fixed, declined, or escalate. Push, then reply on each thread and set its status.
+   for each: fixed, declined, or escalate. Push, run the checks yourself, then `babysit.mjs reply`.
 6. **Decide.** All of the round's escalations go to the user in one Decisions message, answerable in one
    line, with a push notification. Once answered, a second fixer pass carries out the decisions; push,
    reply, resolve.
-7. **Close.** Record the round's metrics (rounds.md §5), then post the round summary: every outcome in
-   one table, then what the skeptics disproved, with the metrics marker at the end.
-8. **Stop or go on.** A round is clean when it kept no finding at or above the tier's `severityBar`.
+7. **Close.** `babysit.mjs summary` records the metrics and posts the round summary.
+8. **Stop or go on.** `babysit.mjs state` applies this rule as `next`. A round is clean when it kept no
+   finding at or above the tier's `severityBar`.
    - Done when the round number ≥ `minRounds` and the last `cleanRoundsNeeded` rounds were clean.
    - At `maxRounds` without that: stop, notify, and send the Round limit message (another round,
      accept as it is, or stop).

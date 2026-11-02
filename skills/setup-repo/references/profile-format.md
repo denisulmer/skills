@@ -38,7 +38,18 @@ One paragraph: what runs here and where its written standards live.
 ```
 
 ## Judgment notes      — this repo's one-way doors, costly two-way doors, fitting blast-radius words
-## Checks              — table of purpose → command (fast, per area, everything, live smoke)
+
+## Checks
+
+```json checks
+[
+  { "id": "backend", "match": ["src/Api/**"], "run": "dotnet test tests/Api.Fast --no-restore", "level": "fast" },
+  { "id": "web-lint", "match": ["web/**/*.{ts,tsx}"], "run": "npx eslint {files}", "cwd": ".", "level": "fast" },
+  { "id": "everything", "run": "scripts/check-all.sh", "level": "full" },
+  { "id": "smoke", "run": "scripts/smoke.sh https://staging.example", "level": "smoke" }
+]
+```
+
 ## Conventions a fix must keep
 ## Merge               — strategy (merge | squash | rebase | rebase-merge) and whether to delete the source branch
 ~~~
@@ -54,3 +65,19 @@ One paragraph: what runs here and where its written standards live.
 | `cap` | Maximum score when **every** changed file matches. |
 | `adjust` | Points added when **every** changed file matches (negative for discounts). |
 | `reason` | Shown in the triage; write it so a reviewer understands the rule without opening this file. |
+
+## Check fields
+
+`setup-repo/scripts/checks.mjs` picks the checks whose files a change touches and runs them one after
+another. A profile without a `json checks` block still works: the skills then read its Checks section as
+prose (and checks.mjs exits with 3 to say so).
+
+| Field | Meaning |
+|---|---|
+| `id` | Name, used by `--only` and in results. |
+| `run` | The command. `{files}` becomes the matched changed files, quoted. Runs in Git Bash on Windows and `/bin/sh` elsewhere unless `shell` says otherwise. |
+| `level` | `fast` (default): agents run it for the files they touched. `full`: the CI suite; agents never run it locally, only `merge-pr` on a repository without CI. `smoke`: a live check for critical changes. |
+| `match` / `exclude` / `regex` / `test` | Which changed files make the check apply, as for rules. Without any, it applies to every change. |
+| `cwd` | Directory to run in, relative to the repository root (default the root). |
+| `shell` | `bash`, `sh`, `cmd` or `pwsh`. |
+| `timeout` | Minutes before the check counts as failed (default 20 fast, 90 full, 30 smoke). |

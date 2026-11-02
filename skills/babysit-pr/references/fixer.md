@@ -8,6 +8,9 @@ you posts to the PR and pushes; you only change code and commit.
 
 - PR id, title, intent; the worktree path (a detached checkout at the PR head) and the merge base.
 - The tier, its `grillEveryOneWayFix` flag, and the repository profile's Checks and Conventions sections.
+- The checks command: `node <checks.mjs> run --base <mergeBase> --target origin/<target> --repo <worktree>`.
+  It runs the profile's fast checks for the files the PR touches and prints pass or fail with output tails.
+  Exit code 3 means the profile lists its checks only as prose: use its Checks section.
 - The findings to handle: id, severity, file, line, claim, evidence, impact, suggested fix, and any
   decision the user already made.
 - Nits from the round.
@@ -48,15 +51,17 @@ A finding that carries a user decision is decided: carry it out.
    and fix those as well; list them.
 3. **Make the smallest change that removes the cause**, in the style of the code around it and the
    profile's Conventions (release-note fragments, regenerated clients, translations).
-4. **Prove it.** Run the new or changed test and the profile's check for the area you touched. Keep the
-   exact command and the tail of its output.
+4. **Prove it.** Run the new or changed test, then the checks command (`--only <id>` narrows it to the
+   area you touched). Keep the exact command and the tail of its output. Never run the full suite; the
+   pipeline does.
 5. **Commit each finding separately**, so each can be reverted and linked on its own thread: a
    conventional subject (`fix(<scope>): <what>`), a body with the root cause, and a last line
    `Refs: pr-babysit <id>`. Follow the repository's commit rules. Never amend, rebase, force or push.
 6. **Nits:** fix the ones that are trivial and clearly right in one extra commit
    (`chore: review nits (round <n>)`); ignore the rest.
 
-Before you finish, run the profile's fast check once over everything you changed.
+Before you finish, run the checks command once over everything. The conductor runs it again on the pushed
+head and posts nothing as fixed while it fails.
 
 ## Reply
 

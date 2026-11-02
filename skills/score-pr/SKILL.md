@@ -22,7 +22,7 @@ Scripts live in this skill's base directory. The PR commands come from the `pr-h
      has no remote), head is `HEAD`.
    - Read the PR description and any linked issue or work item: they state the intent the door and radius
      are judged against.
-2. **Count.** `node <base>/scripts/signals.mjs --base origin/<target> --head <head commit> --repo <checkout>`.
+2. **Count.** `node <base>/scripts/signals.mjs --base origin/<target> --head <head commit> --repo <checkout> > <scratch>/signals.json`.
    It reports sizes, the danger-map rules the change hits, destructive migration lines, and
    `bounds` (floor, cap, adjust, with reasons). The repository profile comes from `~/.claude/pr-profiles/`
    (matched by remote URL or checkout path) or else the repo's `.claude/pr-profile.md` as committed on the
@@ -32,15 +32,21 @@ Scripts live in this skill's base directory. The PR commands come from the `pr-h
    flagged plus a skim of the rest. Look for what counting can't see: a renamed JSON property is a contract
    change, a "refactor" that changes a default is a behaviour change, a deleted file may be the only reader
    of a column.
-4. **Judge both axes** with [references/rubric.md](references/rubric.md). Pick the band first, then the
-   point inside it, and write one sentence for each. The profile's judgment notes name this repo's
-   one-way doors.
+4. **Answer the rubric's questions** ([references/rubric.md](references/rubric.md)): the blast-radius band
+   and the door, one sentence of why for each, and yes or no on each factor. The profile's judgment notes
+   name this repo's one-way doors. You choose bands and answers; you never choose points.
 5. **Name the fact the change is safe because of.** Most risky-looking changes are safe because of one
    fact ("the column is new and nothing reads it yet"). Say whether you proved it by reading the code. An
    unproven safety fact is what the review has to settle first.
-6. **Compute.** raw = radius + door + adjust; score = clamp(raw, floor, cap), and the floor wins when
-   floor > cap: one risky file is enough to need care. Tier: 0-15 trivial, 16-35 low, 36-60 medium,
-   61-80 high, 81-100 critical.
+6. **Compute.** Write the answers to `<scratch>/risk-answers.json`:
+   ```json
+   { "radius": "cross-module", "radiusWhy": "...", "door": "costly", "doorWhy": "...",
+     "factors": { "thinTests": false, "newTerritory": false, "concurrencyOrTime": false, "mechanical": false },
+     "safeBecause": "...", "safeBecauseProven": false, "watch": ["..."] }
+   ```
+   then `node <base>/scripts/score.mjs --answers <scratch>/risk-answers.json --signals <scratch>/signals.json`.
+   It places the points, applies the adjustment, floor and cap (the floor wins when floor > cap), and names
+   the tier from tiers.json's bands. Its output is the JSON block below; don't change its numbers.
 
 ## Output
 
@@ -48,31 +54,36 @@ A fenced JSON block first, because babysit-pr parses it:
 
 ```json
 {
-  "score": 47,
+  "score": 48,
   "tier": "medium",
-  "door": "two-way",
-  "doorPoints": 10,
+  "door": "costly",
+  "doorWord": "two-way, costly",
+  "doorPoints": 9,
   "doorWhy": "Reverting restores everything, but the generated clients must be regenerated with it.",
   "radius": "cross-module",
-  "radiusPoints": 37,
+  "radiusWord": "cross-module",
+  "radiusPoints": 39,
   "radiusWhy": "Changes the shared material-number parser that Serialization and Supplier Portal both call.",
   "adjust": 0,
   "floor": 40,
   "cap": 100,
   "boundReasons": ["backend API surface or generated models shared by three frontends"],
+  "factors": { "thinTests": false, "newTerritory": false, "concurrencyOrTime": false, "mechanical": false },
+  "position": 0.4375,
   "safeBecause": "Both callers already pass canonical numbers, so the new normalization is a no-op for them.",
   "safeBecauseProven": false,
   "watch": ["callers outside the two modules", "stored numbers with leading zeroes"],
-  "profile": "contoso-shop-monorepo"
+  "profile": "contoso-shop-monorepo",
+  "formula": "radius 39 + door 9 = 48"
 }
 ```
 
 Then the part for people, short enough to read in ten seconds:
 
 ```markdown
-**47/100 · medium review**
+**48/100 · medium review**
 
-**47** = blast radius 37 (cross-module) + door 10 (two-way, costly), above the floor of 40
+**48** = blast radius 39 (cross-module) + door 9 (two-way, costly), above the floor of 40 · safety fact unproven
 
 - **Door, two-way:** reverting restores everything, but the generated clients must be regenerated with it.
 - **Blast radius, cross-module:** the shared material-number parser is called by Serialization and Supplier Portal.
