@@ -1,11 +1,11 @@
 ---
-name: pr-setup
-description: Set up a repository for the PR skills (pr-host, pr-risk, pr-babysit, pr-merge) - detect its platform (GitHub, GitLab, Azure DevOps or plain git), check the tools and the sign-in, then draft, calibrate against recent merges and save the repository profile that tells pr-risk where the dangerous code is, which checks a fix must pass and how the repository merges. Use when the user says "set up the PR skills", "set up pr-babysit for this repo", "create / update the repo profile", "teach the risk scorer about this repo", when pr-risk or pr-babysit report that no profile matched, or before the first pr-babysit run in a new repository.
+name: setup-repo
+description: Set up a repository for the PR skills (pr-host, score-pr, babysit-pr, merge-pr) - detect its platform (GitHub, GitLab, Azure DevOps or plain git), check the tools and the sign-in, then draft, calibrate against recent merges and save the repository profile that tells score-pr where the dangerous code is, which checks a fix must pass and how the repository merges. Use when the user says "set up the PR skills", "set up babysit-pr for this repo", "create / update the repo profile", "teach the risk scorer about this repo", when score-pr or babysit-pr report that no profile matched, or before the first babysit-pr run in a new repository.
 ---
 
 # Set up a repository for the PR skills
 
-`<pr-host>` = `node <base>/../pr-host/scripts/pr-host.mjs`, `<signals>` = `node <base>/../pr-risk/scripts/signals.mjs`.
+`<pr-host>` = `node <base>/../pr-host/scripts/pr-host.mjs`, `<signals>` = `node <base>/../score-pr/scripts/signals.mjs`.
 Run everything from the repository (any worktree of it works the same).
 
 ## 1. Platform and sign-in
@@ -24,8 +24,8 @@ Run everything from the repository (any worktree of it works the same).
    | azure-devops | `az login` (or `AZURE_DEVOPS_EXT_PAT`) |
    | local | nothing: reviews live in the repo's git directory, merges are local merges plus a push |
 
-4. Tools: `node --version` 18 or newer, `git --version` 2.38 or newer. pr-babysit uses Claude Code's
-   Workflow tool when it is there and parallel agents when it is not; pr-merge uses Monitor.
+4. Tools: `node --version` 18 or newer, `git --version` 2.38 or newer. babysit-pr uses Claude Code's
+   Workflow tool when it is there and parallel agents when it is not; merge-pr uses Monitor.
 
 ## 2. Existing profile
 
@@ -64,14 +64,14 @@ Write the draft to `<scratch>/pr-profile.md`.
 prints the last 20 merged changes with the floor, cap and adjustment the draft gives each, and the rules
 behind them. Show the table and ask the user which rows look wrong: a change they consider routine with a
 high floor, a risky one capped low, a rule that never fires. Fix the rules and run it again until they
-agree. Bounds are not scores: when the user wants to see a full score, run the pr-risk skill on one or
+agree. Bounds are not scores: when the user wants to see a full score, run the score-pr skill on one or
 two of the changes, not all twenty.
 
 ## 5. Save
 
 Ask where it goes:
 
-- **For the team:** `.claude/pr-profile.md`, committed, without `remotes` or `paths`. pr-risk reads it from
+- **For the team:** `.claude/pr-profile.md`, committed, without `remotes` or `paths`. score-pr reads it from
   the PR's target branch, so it applies once merged; propose committing it on a branch with a PR, or
   commit it directly when the user says so.
 - **Just for the user:** `~/.claude/pr-profiles/<name>.md`, with `remotes` (each remote URL's host and
@@ -84,4 +84,4 @@ pass the branch it is committed on as `<ref>`).
 ## 6. Report
 
 Two lines: platform and who is signed in; the profile's name, where it lives and what it guards. Then
-say pr-risk, pr-babysit and pr-merge are ready for this repository.
+say score-pr, babysit-pr and merge-pr are ready for this repository.

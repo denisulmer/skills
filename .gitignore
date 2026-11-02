@@ -2,4 +2,4 @@
 workspaces/
 node_modules/
 # Evals that run against private repositories; kept local
-skills/pr-risk/evals/
+skills/score-pr/evals/

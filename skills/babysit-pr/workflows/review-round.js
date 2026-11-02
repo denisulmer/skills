@@ -1,7 +1,7 @@
 export const meta = {
   name: 'pr-review-round',
-  description: 'One pr-babysit review round: tier-sized reviewer lenses, skeptics that try to refute each finding, verdicts on human comments',
-  whenToUse: 'Started by the pr-babysit skill once per review round, with args built from references/tiers.json',
+  description: 'One babysit-pr review round: tier-sized reviewer lenses, skeptics that try to refute each finding, verdicts on human comments',
+  whenToUse: 'Started by the babysit-pr skill once per review round, with args built from references/tiers.json',
   phases: [
     { title: 'Map', detail: 'split the PR into review portions (full rounds of tiers with portion lenses)' },
     { title: 'Review', detail: 'one reviewer per lens, and per portion where the tier asks for it' },
@@ -175,6 +175,9 @@ function context(label, portion, canRun = false) {
   ].filter(Boolean).join('\n\n')
 }
 
+// Agents started so far, for the round's metrics.
+let agentsStarted = 0
+
 function invalid(stage, failed, extra = {}) {
   log(`Round ${round} is invalid: no result from ${failed.join(', ')}.`)
   return {
@@ -189,6 +192,7 @@ function invalid(stage, failed, extra = {}) {
     nits: [],
     dropped: [],
     human: [],
+    coverage: { agents: agentsStarted },
     ...extra,
   }
 }
@@ -202,6 +206,7 @@ if (!delta && tier.portionLenses.length > 0) {
     `Split pull request !${pr.id} "${pr.title}" into review portions along its seams (a module, a layer, a feature slice) so that one reviewer can hold a whole portion in mind. Every changed file belongs to exactly one portion. Use two to six portions; a small change may be one. For each, give a name, its files, and what a reviewer should look at hardest there.\n\nIntent: ${pr.intent}\nChanged files: git -C "${repo.worktree}" diff --stat ${repo.mergeBase}..${repo.headSha}\nDo not modify anything.`,
     { label: 'map', phase: 'Map', schema: PORTIONS, model: 'sonnet', effort: 'medium' },
   )
+  agentsStarted += 1
   portions = mapped?.portions?.length ? mapped.portions.slice(0, 6) : null
   if (!portions) log('The mapper returned no portions, so portion lenses review the whole PR.')
   else if (mapped.portions.length > 6) log(`The mapper proposed ${mapped.portions.length} portions; reviewing the first 6.`)
@@ -238,6 +243,7 @@ const humanPrompt = (h) =>
     context(`comment-${h.threadId}`),
   ].join('\n\n')
 
+agentsStarted += tasks.length + human.length
 const [reviews, humanVerdicts] = await Promise.all([
   parallel(tasks.map((t) => () => agent(`${LENSES[t.lens]}\n\n${context(t.label, t.portion, RUNNING_LENSES.has(t.lens))}`, { label: `review:${t.label}`, phase: 'Review', schema: FINDINGS, ...modelOpt(t.model), effort: tier.effort }))),
   parallel(human.map((h) => () => agent(humanPrompt(h), { label: `comment:${h.threadId}`, phase: 'Verify', schema: HUMAN_VERDICT, ...modelOpt(tier.model), effort: tier.effort }))),
@@ -306,6 +312,7 @@ const batches = []
 for (let i = 0; i < minors.length; i += MINORS_PER_SKEPTIC) batches.push(minors.slice(i, i + MINORS_PER_SKEPTIC))
 
 const checked = tier.refuters > 0
+if (checked) agentsStarted += serious.length * tier.refuters + batches.length
 const [seriousVotes, batchVerdicts] = checked
   ? await Promise.all([
       parallel(serious.map((f) => () =>
@@ -386,6 +393,7 @@ return {
   dropped,
   human: humanResults,
   coverage: {
+    agents: agentsStarted,
     reviewers: tasks.map((t) => t.label),
     portions: portions ? portions.map((p) => p.name) : [],
     skepticsPerMajorFinding: tier.refuters,

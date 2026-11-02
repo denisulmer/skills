@@ -1,7 +1,7 @@
 # Repository profiles
 
 A profile teaches the risk scorer, the review rounds and the merge step what is special about one
-repository. `pr-risk/scripts/signals.mjs` finds it, first match wins:
+repository. `score-pr/scripts/signals.mjs` finds it, first match wins:
 
 1. **Yours:** `~/.claude/pr-profiles/*.md` (or `$CLAUDE_CONFIG_DIR/pr-profiles/`), when an entry in
    `remotes` is a substring of one of the repo's remote URLs (user names stripped first), or an entry in

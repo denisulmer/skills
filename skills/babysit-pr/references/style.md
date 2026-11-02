@@ -1,6 +1,6 @@
 # Writing for the reviewer
 
-Everything pr-babysit, pr-merge and pr-risk write has one reader who matters: the user, deciding what
+Everything babysit-pr, merge-pr and score-pr write has one reader who matters: the user, deciding what
 deserves their attention. Write so they can stop reading as early as possible, and so the few things that
 need them cannot be missed.
 
@@ -163,7 +163,12 @@ Answered (status `closed`):
 **Nits:** 2 fixed in [`aa11bb2`](<commit url>), 1 skipped
 
 _Reviewed the fixes since `c4d5e6f` up to `fa6b973` · 2 reviewers (correctness, tests) · opus high · 3 skeptics per major finding, 1 for the minor ones_
+
+<!-- pr-metrics {"v":1,"kind":"round","round":2,…} -->
 ~~~
+
+The marker is the `marker` that `measure.mjs round` printed, pasted unchanged as the last line. Hosts
+don't render it; the measure-prs skill reads it back.
 
 A clean round is one line plus the machinery line:
 
@@ -274,6 +279,8 @@ Run **another round**, **accept** the PR as it is (the finding stays open on the
 
 ✅ 3 fixed · ↩️ 1 declined · 🧭 1 decided by you · nothing open
 
+❓ Still needs an approval from Jane Doe (required reviewer); auto-merge will wait for it.
+
 👀 Worth a glance first:
 
 - [R1-F4](<thread url>) declined as a false positive: the 500 path is unreachable behind `KeyMiddleware`
@@ -300,5 +307,6 @@ Only for ❓ items and endings. One line, under 200 characters, the PR first, th
 | round failed | `PR !27887: round 3 stopped, usage limit reached. Nothing posted` |
 | review finished | `PR !27887 ready to merge: risk 52, 3 fixed, 1 worth a glance` |
 | round limit hit | `PR !27887: round limit reached, 1 major finding open` |
+| waiting for approval | `PR !27887: checks green, waiting 2 h for approval by Jane Doe` |
 | merge stuck | `PR !27887 merge stuck: check-frontends failed 3 times` |
 | merged | `PR !27887 merged as 1a2b3c4` |

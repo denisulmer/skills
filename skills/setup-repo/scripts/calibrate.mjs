@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Score bounds a draft profile gives the last N changes merged into a branch, so a person can see whether
-// its rules are right before anyone relies on them. Runs pr-risk's signals.mjs once per change.
+// its rules are right before anyone relies on them. Runs score-pr's signals.mjs once per change.
 //
 //   node calibrate.mjs --profile <draft.md> [--repo <path>] [--branch origin/main] [--count 20] [--json]
 //
@@ -11,7 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const SIGNALS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'pr-risk', 'scripts', 'signals.mjs');
+const SIGNALS = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'score-pr', 'scripts', 'signals.mjs');
 
 function parseArgs(argv) {
   const opts = {};

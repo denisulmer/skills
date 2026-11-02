@@ -214,14 +214,25 @@ export async function watchLoop(prId, intervalSeconds, snapshot) {
 }
 
 // The state keys every adapter's snapshot uses, so watch lines read the same everywhere.
-export function watchState({ status, mergeStatus, autoMerge, isDraft }, checks) {
+export function watchState({ status, mergeStatus, autoMerge, isDraft, reviewers }, checks) {
   return {
     status,
     mergeStatus: mergeStatus ?? 'unknown',
     autoMerge: autoMerge ? 'set' : 'off',
     draft: isDraft ? 'yes' : 'no',
+    approval: approvalState(reviewers, checks),
     ...Object.fromEntries(checks.map((check) => [`check "${check.name}"`, `${check.status}${check.runId ? ` run=${check.runId}` : ''}`])),
   };
+}
+
+// Whether a person still has to approve: required reviewers who have not, and blocking review checks
+// (Azure DevOps reviewer policies, GitHub's review decision, GitLab approval rules) that have not passed.
+export function approvalState(reviewers = [], checks = []) {
+  const people = reviewers.filter((r) => r.isRequired && !/^approved/.test(r.vote)).map((r) => (r.vote === 'none' ? r.name : `${r.name} ${r.vote}`));
+  const policies = checks.filter((check) => check.kind === 'review' && check.isBlocking);
+  const open = policies.filter((check) => !['passed', 'skipped'].includes(check.status)).map((check) => check.name);
+  if (people.length || open.length) return `waiting (${[...people, ...open].join(', ')})`;
+  return policies.length || reviewers.some((r) => r.isRequired) ? 'approved' : 'not required';
 }
 
 export function peopleComments(threads) {

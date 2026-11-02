@@ -1,31 +1,32 @@
 ---
-name: pr-babysit
+name: babysit-pr
 description: Shepherd a pull request (GitHub, GitLab, Azure DevOps, or a branch in a plain git repository) from review to merge - score its risk, run as many review rounds as that risk calls for (more reviewers, stronger models and skeptics as the score rises), record every round and finding as PR threads, fix what can be fixed with proof, ask the user only the decisions that are theirs, rewrite the PR description with a review report, and after the user confirms, merge it and watch the merge through. Use when the user says "babysit", "shepherd", "see this PR through", "take this PR to merge", "review and fix my PR until it's ready", or hands over a PR or branch to get merged. Not for a single quick review or a question about a PR.
 ---
 
 # PR babysitter
 
 ```
-pr-babysit <id|url|branch>
+babysit-pr <id|url|branch>
  0 Set up    PR, mode (owner / review-only), repo profile, worktree, resume point
- 1 Triage    pr-risk → score, tier → triage thread
+ 1 Triage    score-pr → score, tier → triage thread
  2 Rounds    review (workflow) → record (threads) → fix (fixer agent) → decide (grill you)
              → push, reply, resolve → stop when the tier's clean-round rule is met
  3 Report    PR description rewritten as a review summary + full report thread → notify you
  4 Gate      wait for your "merge" in this chat
- 5 Merge     pr-merge → done
+ 5 Merge     merge-pr → done
 ```
 
 Paths below are relative to this skill's base directory. The sibling skills sit beside it:
-`<pr-host>` = `node <base>/../pr-host/scripts/pr-host.mjs`, pr-risk in `<base>/../pr-risk`, pr-merge in
-`<base>/../pr-merge`. `<pr-host>` works the same on GitHub, GitLab, Azure DevOps and plain git (`local`);
+`<pr-host>` = `node <base>/../pr-host/scripts/pr-host.mjs`, score-pr in `<base>/../score-pr`, merge-pr in
+`<base>/../merge-pr`. `<pr-host>` works the same on GitHub, GitLab, Azure DevOps and plain git (`local`);
 its SKILL.md lists the few differences.
 
 ## Ground rules
 
 - **The PR is the state.** Everything this skill posts carries a key (`pr-babysit:triage`,
   `pr-babysit:R2-summary`, `pr-babysit:R2-F3`, `pr-babysit:report`), so any session can read the PR and
-  carry on. Do not keep progress anywhere else that matters.
+  carry on. Do not keep progress anywhere else that matters. Keys keep the `pr-babysit:` prefix from
+  before the skill was renamed, so PRs started earlier still resume.
 - **You act as the user on the host.** Start every comment with 🤖. Never vote or approve, never
   force-push, never rewrite pushed history. Never merge or set auto-merge without the user's yes in this
   chat; an approval or a comment on the host is not a yes.
@@ -52,10 +53,10 @@ its SKILL.md lists the few differences.
 2. **Mode.** `isMine: true` → owner mode: review, fix, push, resolve, report, merge. Otherwise
    **review-only**: review and post findings, never push to someone else's branch, never change their
    description or thread statuses; the report goes into the report thread only.
-3. **Profile.** `node <base>/../pr-risk/scripts/signals.mjs --which-profile --base origin/<target> --repo <repo>`
+3. **Profile.** `node <base>/../score-pr/scripts/signals.mjs --which-profile --base origin/<target> --repo <repo>`
    gives the repository profile and its text: yours from `~/.claude/pr-profiles/`, or the repo's
    `.claude/pr-profile.md` as committed on the target branch. Its Checks, Conventions and Merge sections
-   steer the fixer and the merge. No profile: tell the user once that the pr-setup skill drafts one, and
+   steer the fixer and the merge. No profile: tell the user once that the setup-repo skill drafts one, and
    use the repo's own agent guides meanwhile.
 4. **Worktree.** Work in a detached worktree at the PR head beside the main checkout, never in a checkout
    with uncommitted changes:
@@ -77,7 +78,7 @@ This runs for hours of wall-clock. If this session has unrelated work in flight,
 
 ## 1. Triage
 
-Run the **pr-risk** skill on the PR. Read the tier's entry from
+Run the **score-pr** skill on the PR. Read the tier's entry from
 [references/tiers.json](references/tiers.json). Post the triage thread (Triage template, key
 `pr-babysit:triage`, status `closed`). Send the Triage line in chat and go straight on.
 
@@ -86,23 +87,33 @@ Run the **pr-risk** skill on the PR. Read the tier's entry from
 Follow [references/rounds.md](references/rounds.md). Per round:
 
 1. **Refresh.** Fetch. If `origin/<source>` has commits you did not push, bring them in (fast-forward,
-   or merge when diverged; never rebase). Rerun pr-risk's `signals.mjs`; if a new floor lifts the score into
-   a higher tier, switch up and say why in the round summary. Never switch down.
-2. **Review.** Start `Workflow` with the review-round script and the args from rounds.md (§1 says how to
+   or merge when diverged; never rebase). Rerun score-pr's `signals.mjs`; if a new floor lifts the score into
+   a higher tier, switch up and say why in the round summary. Never switch down. Note the time: the
+   round's metrics start here.
+2. **Green build.** Review only code that builds. `<pr-host> checks <pr>`, and wait on the blocking
+   `build` checks with Monitor (`<pr-host> watch <pr>`, as in merge-pr §3) until each has passed or
+   failed on the current head; right after a push, give them a minute to start over. A failure: follow
+   merge-pr §4's Failed build (rerun once for infrastructure trouble); a real failure goes to the fixer as
+   finding `R<n>-B<k>` (thread, key `pr-babysit:R<n>-B<k>`, the log tail as evidence), and the fix is
+   pushed and green before the review starts. No build check at all (plain git, or a host that runs no
+   pipeline for this PR): run the profile's fast check in the worktree instead. The full suite runs in
+   the pipeline only, never locally. Review-only mode: don't wait; note a red build in the round summary.
+3. **Review.** Start `Workflow` with the review-round script and the args from rounds.md (§1 says how to
    launch it and which `scope` to pass: `full` in round 1, `delta` after that). The user's invocation of
    this skill is their opt-in to the workflow, and the tier sets its size: a full high or critical round
    runs one to two dozen agents, a delta round a handful. It runs in the background; wait for its
    notification. It returns verified findings, nits, what the skeptics refuted, and verdicts on people's
    comments, or `valid: false` when agents failed: then stop the round (rounds.md §1) and post nothing.
-3. **Record.** One inline thread per finding, a reply on each person's thread.
-4. **Fix** (owner mode). One fixer subagent per round, briefed with
+4. **Record.** One inline thread per finding, a reply on each person's thread.
+5. **Fix** (owner mode). One fixer subagent per round, briefed with
    [references/fixer.md](references/fixer.md). It commits one finding per commit and returns a decision
    for each: fixed, declined, or escalate. Push, then reply on each thread and set its status.
-5. **Decide.** All of the round's escalations go to the user in one Decisions message, answerable in one
+6. **Decide.** All of the round's escalations go to the user in one Decisions message, answerable in one
    line, with a push notification. Once answered, a second fixer pass carries out the decisions; push,
    reply, resolve.
-6. **Close.** Post the round summary: every outcome in one table, then what the skeptics disproved.
-7. **Stop or go on.** A round is clean when it kept no finding at or above the tier's `severityBar`.
+7. **Close.** Record the round's metrics (rounds.md §5), then post the round summary: every outcome in
+   one table, then what the skeptics disproved, with the metrics marker at the end.
+8. **Stop or go on.** A round is clean when it kept no finding at or above the tier's `severityBar`.
    - Done when the round number ≥ `minRounds` and the last `cleanRoundsNeeded` rounds were clean.
    - At `maxRounds` without that: stop, notify, and send the Round limit message (another round,
      accept as it is, or stop).
@@ -119,14 +130,22 @@ finished" push notification.
 
 ## 4. Merge gate
 
-Send the Merge question from style.md: outcome counts, anything open, the 👀 list, and "merge?". Only an
+Send the Merge question from style.md: outcome counts, anything open, approvals a person still owes
+(`approval` in merge-pr's preflight), the 👀 list, and "merge?". Only an
 explicit yes here counts. If new commits or comments arrive while you wait, run another round when they
 change code; answer comments that don't.
 
 ## 5. Merge
 
-Run the **pr-merge** skill on the PR, passing the worktree path so it can fix CI or conflicts and clean
+Run the **merge-pr** skill on the PR, passing the worktree path so it can fix CI or conflicts and clean
 the worktree up afterwards.
+
+## Metrics
+
+Every run leaves numbers behind, so the tiers can be tuned from data (the measure-prs skill). Per round:
+rounds.md §5. Per PR, once it ends (accepted as it is at the round limit, stopped, or abandoned), the
+`pr` command from rounds.md §5 with that `--outcome`; merge-pr records `merged` itself when it confirms
+the merge. Metrics never block the PR: when the script fails, say so in one line and carry on.
 
 ## Review-only mode
 
@@ -138,4 +157,4 @@ thread; the description and the merge belong to the author.
 
 Use `PushNotification` (load it with ToolSearch `select:PushNotification` when it is deferred) only for
 the events in style.md's table: decisions waiting, another round to approve, round failed, review
-finished, round limit hit, merge stuck, merged.
+finished, round limit hit, waiting for approval, merge stuck, merged.

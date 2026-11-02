@@ -65,7 +65,8 @@ session only; in a new session, rerun the round).
 
 ## 2. Recording findings
 
-As soon as the workflow returns:
+As soon as the workflow returns, save its result object verbatim to `<scratch>/round-<n>-result.json`
+(the round's metrics read it). Then:
 
 1. **Finding threads.** For each finding without a `humanThreadId`:
    `thread-create <pr> --file <file> --line <line> [--end-line <endLine>] --key pr-babysit:<id> --body-file f.md`,
@@ -80,8 +81,10 @@ The round summary is posted when the round closes, so it can show every outcome 
 ## 3. Fixing, pushing, resolving
 
 1. Spawn one fixer with the Agent tool: `model` omitted (session model), `effort` = the tier's
-   `fixerEffort`. Prompt: "Read <base>/references/fixer.md and follow it", then the inputs it lists.
-   It returns a JSON block with one result per finding.
+   `fixerEffort`, description `fixer: round <n>` (`fixer: round <n> decisions` for the second pass; the
+   metrics group agents by it). Prompt: "Read <base>/references/fixer.md and follow it", then the inputs
+   it lists. It returns a JSON block with one result per finding: save it to `<scratch>/round-<n>-fixer.json`
+   (`round-<n>-fixer-decisions.json` for the second pass).
 2. Check the result before trusting it: every `fixed` names a commit that exists
    (`git -C <wt> log --oneline <mergeBase>..HEAD`) and a proof with real output. Send anything unproven
    back to the fixer once; after that, treat it as escalated.
@@ -103,9 +106,25 @@ thread with the Decided template, quoting the user's choice.
 
 ## 5. Closing a round
 
-Post the round summary (`--key pr-babysit:R<n>-summary`, no file, status `closed`) with every finding's
-outcome, what the skeptics disproved, the nits, and the reviewed commit in the last line. Then apply the
-stop rules in SKILL.md.
+Record the metrics first:
+
+```
+node <base>/../measure-prs/scripts/measure.mjs round --repo <worktree> --pr <id> --pr-url <webUrl>
+  --round <n> --tier <tier> --scope <full|delta> --started <round start, ISO> --scratch <scratch>
+```
+
+It reads `round-<n>-result.json` and the `round-<n>-fixer*.json` files, counts the round's tokens from this
+session's transcripts, appends a record to the local ledger, and prints a `marker` (an HTML comment).
+An invalid round is recorded the same way before you stop it.
+
+Then post the round summary (`--key pr-babysit:R<n>-summary`, no file, status `closed`) with every
+finding's outcome, what the skeptics disproved, the nits, the reviewed commit in the last line, and the
+marker after it. Then apply the stop rules in SKILL.md.
+
+When the PR ends, record it once with the same flags minus `--round` and `--scope`, plus
+`--score <score> --outcome merged|accepted|stopped|abandoned` and `--started` = the triage thread's
+`published` time: `measure.mjs pr …`. Post its marker as a reply on the report thread (or, without one, on
+the triage thread): `🤖 Review metrics recorded.` and the marker, `--key pr-babysit:metrics`, status `closed`.
 
 ## 6. Thread statuses
 

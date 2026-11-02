@@ -2,6 +2,28 @@
 
 Each `## <version>` section becomes the notes of the GitHub release `v<version>`. Newest first.
 
+## 4.0.0
+
+The skills are renamed verb-first, every review now leaves metrics behind, and a new `measure-prs` skill
+reports on them. **Use the new names**; nothing else to do.
+
+- **Renamed skills:** `pr-setup` → `setup-repo`, `pr-risk` → `score-pr`, `pr-babysit` → `babysit-pr`,
+  `pr-merge` → `merge-pr` (for example `/denisulmer-skills:babysit-pr`). `pr-host` keeps its name. PR
+  threads keep their `pr-babysit:*` keys, so PRs started before the rename still resume. With the
+  development junctions, rerun `./install.ps1`: it links the new folders and removes the old links.
+- **`measure-prs`** (new): every review round and every PR writes a record to a local ledger
+  (`~/.claude/pr-metrics/<repo>.jsonl`) and a hidden marker on the PR: tokens from the session
+  transcripts, wall time, agents, findings kept and refuted per reviewer, fixes, decisions, failed rounds.
+  The skill reports per tier, round and lens, imports markers from other sessions, and proposes tier or
+  profile changes backed by the numbers. It changes nothing by itself.
+- **Green build first:** `babysit-pr` reviews only code whose PR build is green (or, without a build, whose
+  fast check passes); a real failure is fixed before the round's review starts. The full suite runs in
+  the pipeline only.
+- **Approvals:** `pr-host watch` reports `approval` (`not required`, `approved`, `waiting (<who>)`).
+  `merge-pr` and the merge question name approvals still owed, and a notification fires after 2 hours
+  of waiting. Reviewers are never added or pinged for you.
+- `merge-pr` reviews a fix to a failed build with a delta round (only the fix), not a full one.
+
 ## 3.1.0
 
 pr-babysit spends far less per PR: later rounds review only the fixes, reviewers stop building and

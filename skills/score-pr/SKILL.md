@@ -1,6 +1,6 @@
 ---
-name: pr-risk
-description: Score how dangerous a pull request or branch is, 0-100, from its blast radius and whether it is a one-way or two-way door, and name the review tier that follows (trivial, low, medium, high, critical). Use when the user asks how risky a PR or change is, wants a PR triaged or categorized before review, asks "is this a one-way door", "what's the blast radius", "how careful do we need to be with this", or wants to know how much review a change deserves. pr-babysit runs it as its first step.
+name: score-pr
+description: Score how dangerous a pull request or branch is, 0-100, from its blast radius and whether it is a one-way or two-way door, and name the review tier that follows (trivial, low, medium, high, critical). Use when the user asks how risky a PR or change is, wants a PR triaged or categorized before review, asks "is this a one-way door", "what's the blast radius", "how careful do we need to be with this", or wants to know how much review a change deserves. babysit-pr runs it as its first step.
 ---
 
 # PR risk
@@ -27,7 +27,7 @@ Scripts live in this skill's base directory. The PR commands come from the `pr-h
    `bounds` (floor, cap, adjust, with reasons). The repository profile comes from `~/.claude/pr-profiles/`
    (matched by remote URL or checkout path) or else the repo's `.claude/pr-profile.md` as committed on the
    base, never the head, so a change cannot loosen its own rules; `profile.source` says which. With no
-   profile it applies defaults only; say so, and offer the pr-setup skill to draft one.
+   profile it applies defaults only; say so, and offer the setup-repo skill to draft one.
 3. **Read the diff.** All of it up to about 1,500 changed lines; beyond that, every file the signals
    flagged plus a skim of the rest. Look for what counting can't see: a renamed JSON property is a contract
    change, a "refactor" that changes a default is a behaviour change, a deleted file may be the only reader
@@ -44,7 +44,7 @@ Scripts live in this skill's base directory. The PR commands come from the `pr-h
 
 ## Output
 
-A fenced JSON block first, because pr-babysit parses it:
+A fenced JSON block first, because babysit-pr parses it:
 
 ```json
 {
@@ -84,9 +84,9 @@ Add one line for anything that blocks the PR regardless of its risk (it no longe
 red), and nothing else.
 
 When the user asks how much review the PR needs, describe its tier from
-`<base>/../pr-babysit/references/tiers.json` (rounds, reviewers, skeptics); don't improvise a review plan.
+`<base>/../babysit-pr/references/tiers.json` (rounds, reviewers, skeptics); don't improvise a review plan.
 
-Post the result to the PR only when asked; pr-babysit posts its own triage thread.
+Post the result to the PR only when asked; babysit-pr posts its own triage thread.
 
 ## Scoring is not reviewing
 
