@@ -2,6 +2,15 @@
 
 Each `## <version>` section becomes the notes of the GitHub release `v<version>`. Newest first.
 
+## 4.3.2
+
+The scripts work when the skills are installed as personal skills (`install.ps1` junctions or symlinks).
+Nothing to do but update.
+
+- `babysit.mjs`, `measure.mjs`, `checks.mjs`, `score.mjs` and `acmap.mjs` exited silently with code 0 when
+  run through a junction or symlink, because Node resolves the link for the module but not for the
+  command line. They now compare real paths. The plugin install was not affected.
+
 ## 4.3.1
 
 The escape scan asks about every PR a fix touched, and only calls a tier escape-free after a complete

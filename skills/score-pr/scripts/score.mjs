@@ -12,7 +12,7 @@
 // territory, concurrency or time, and an unproven safety fact moves it 3/16 of the band higher (all four
 // reach the top); a mechanical change with tests that would catch a mistake sits at the bottom.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -97,7 +97,8 @@ export function score(answers, signals) {
   };
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url).toLowerCase() === (await import('node:path')).resolve(process.argv[1]).toLowerCase()) {
+// Run as a command, also through a junction or symlink (personal skills): compare real paths.
+if (process.argv[1] && realpathSync(process.argv[1]).toLowerCase() === realpathSync(fileURLToPath(import.meta.url)).toLowerCase()) {
   const args = process.argv.slice(2);
   const get = (name) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined; };
   if (!get('answers')) {

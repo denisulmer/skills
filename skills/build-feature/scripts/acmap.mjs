@@ -10,7 +10,7 @@
 // `Refs: spec <slug> AC3` (that trailer line, with this spec's slug); a test carries the id in its name or
 // description (`AC3`, `TestAC3_…`, `test_ac3`: any case, no digit touching it). An AC whose statement is struck through (`~~…~~`) was dropped.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TEST_FILE, git, parseArgs } from '../../setup-repo/scripts/profile.mjs';
@@ -92,7 +92,8 @@ export function acMap({ spec, base, head = 'HEAD', repo = '.' }) {
   };
 }
 
-if (process.argv[1] && resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase()) {
+// Run as a command, also through a junction or symlink (personal skills): compare real paths.
+if (process.argv[1] && realpathSync(process.argv[1]).toLowerCase() === realpathSync(fileURLToPath(import.meta.url)).toLowerCase()) {
   const opts = parseArgs(process.argv.slice(2));
   if (typeof opts.spec !== 'string' || typeof opts.base !== 'string') {
     console.error('usage: node acmap.mjs --spec <file> --base <ref> [--head HEAD] [--repo <path>]');

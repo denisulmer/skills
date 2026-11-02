@@ -14,7 +14,7 @@
 // (fall back to its Checks section).
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, posix, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { changedFiles, fileMatcher, loadProfile, parseArgs, tryGit } from './profile.mjs';
@@ -149,7 +149,8 @@ function run(opts) {
 
 const COMMANDS = { list, run };
 
-if (process.argv[1] && resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase()) {
+// Run as a command, also through a junction or symlink (personal skills): compare real paths.
+if (process.argv[1] && realpathSync(process.argv[1]).toLowerCase() === realpathSync(fileURLToPath(import.meta.url)).toLowerCase()) {
   const [command, ...rest] = process.argv.slice(2);
   const opts = parseArgs(rest);
   if (!COMMANDS[command]) {

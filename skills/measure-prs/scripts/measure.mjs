@@ -21,9 +21,9 @@
 // The transcript format is not documented: when it cannot be read, tokens are recorded as unknown.
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { git, scanEscapes, undecided } from './escapes.mjs';
 
@@ -487,7 +487,8 @@ const COMMANDS = {
   tokens: (opts) => { need(opts, 'started'); return countTokens(opts); },
 };
 
-if (process.argv[1] && resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase()) {
+// Run as a command, also through a junction or symlink (personal skills): compare real paths.
+if (process.argv[1] && realpathSync(process.argv[1]).toLowerCase() === realpathSync(fileURLToPath(import.meta.url)).toLowerCase()) {
   const opts = parseArgs(process.argv.slice(2));
   const command = COMMANDS[opts._[0]];
   if (!command) {

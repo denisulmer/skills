@@ -12,7 +12,7 @@
       "name": "denisulmer-skills",
       "source": "./",
       "description": "From feature idea to merged code on GitHub, GitLab, Azure DevOps or plain git: an approved spec with testable acceptance criteria, a build AC by AC, a 0-100 risk score, tiered review rounds with fixes recorded as PR threads, a watched merge, metrics that show what reviews cost and find, and a setup skill that teaches them each repository.",
-      "version": "4.3.1",
+      "version": "4.3.2",
       "author": {
         "name": "Denis Ulmer"
       },
