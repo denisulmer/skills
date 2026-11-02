@@ -2,6 +2,22 @@
 
 Each `## <version>` section becomes the notes of the GitHub release `v<version>`. Newest first.
 
+## 4.3.1
+
+The escape scan asks about every PR a fix touched, and only calls a tier escape-free after a complete
+scan. Nothing to do but update.
+
+- A fix that traces back to several PRs asks about each; skipping one brings it back next time instead of
+  dropping it with the others.
+- "No escapes" needs a complete scan for every repository behind the tier: the whole history, every merged
+  PR traced, nothing left unscanned or undecided. The report counts undecided candidates live and says
+  what keeps a scan from being complete.
+- A PR's merge commit is matched on its subject only, so an older commit mentioning `#12` in its body is
+  not taken for PR 12. Plain-English fixes ("Fix crash in parser", "Fixed login") count as fixes.
+- Faster: one diff per fix, one blame per file, one pass over the history.
+- merge-pr records the PR before removing the worktree, so the record lands in the right ledger, and an
+  escape is dated like its PR, so `--since` treats both the same.
+
 ## 4.3.0
 
 `measure-prs` now finds defects that escaped review, so the tiers can be tuned on quality, not only on

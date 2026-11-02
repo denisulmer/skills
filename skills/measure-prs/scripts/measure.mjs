@@ -25,7 +25,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { scanEscapes } from './escapes.mjs';
+import { git, scanEscapes, undecided } from './escapes.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude');
@@ -62,10 +62,6 @@ function pluginVersion() {
 
 // ---------------------------------------------------------------------------------------------
 // Ledger
-
-function git(repo, args) {
-  try { return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; }
-}
 
 // One ledger per repository, named after its origin (host and path, without user name or .git), or after
 // the main checkout's folder when it has no remote.
@@ -319,10 +315,13 @@ function cmdEscapes(opts) {
   const slug = repoSlug(opts.repo);
   const records = readLedger(ledgerFile(slug));
   const result = scanEscapes({ repo: opts.repo, branch, since: typeof opts.since === 'string' ? opts.since : null, records, limit: Number(opts.limit ?? 300) });
-  // The report trusts "no escapes" only after a scan that left nothing undecided.
+  // Each scanned fix leaves a trace of the PRs it led to; the scan record says how complete the scan was.
+  // The report counts undecided candidates from traces and verdicts, so it is never stale.
   const now = new Date().toISOString();
-  upsert(ledgerFile(slug), [{ v: 1, kind: 'escape-scan', repo: slug, pr: 'scan', started: now, ended: now, branch, since: opts.since ?? null, reviewed: result.reviewed, candidates: result.candidates.length, truncated: result.truncated, unresolved: result.unresolved.length }]);
-  return { branch, ...result };
+  const traces = result.traces.map((t) => ({ v: 1, kind: 'escape-trace', repo: slug, pr: 'trace', fix: t.fix, prs: t.prs, started: now, ended: now }));
+  upsert(ledgerFile(slug), [...traces, { v: 1, kind: 'escape-scan', repo: slug, pr: 'scan', started: now, ended: now, branch, since: opts.since ?? null, reviewed: result.reviewed, scanned: result.scanned, truncated: result.truncated, unresolved: result.unresolved.length }]);
+  const { traces: _, ...shown } = result;
+  return { branch, ...shown };
 }
 
 // The user's verdict on one candidate. Dismissed ones are kept too, so the scan never asks twice.
@@ -336,7 +335,7 @@ function cmdEscape(opts) {
   const record = {
     v: 1, kind: 'escape', repo: slug, pr: pr.pr, prUrl: pr.prUrl ?? null, tier: pr.tier, fix,
     subject: git(opts.repo, ['show', '-s', '--format=%s', fix]), status: opts.confirm ? 'confirmed' : 'dismissed',
-    note: typeof opts.note === 'string' ? opts.note : null, started: pr.ended ?? pr.started, decided: new Date().toISOString(), version: pluginVersion(),
+    note: typeof opts.note === 'string' ? opts.note : null, started: pr.started, decided: new Date().toISOString(), version: pluginVersion(),
   };
   upsert(ledgerFile(slug), [record]);
   return { record };
@@ -383,18 +382,16 @@ export function aggregate(records, { since } = {}) {
     const t = tiers[p.tier];
     if (!t) continue;
     t.finished++;
-    if (p.outcome === 'merged') t.merged = (t.merged ?? 0) + 1;
+    if (p.outcome === 'merged') { t.merged = (t.merged ?? 0) + 1; (t.mergedRepos ??= new Set()).add(p.repo); }
     if (p.tokens?.source === 'transcript') t.prTokens.push(p.tokens.weighted);
   }
-  // Escapes count against the PR, whenever the fix came: the record's date is the PR's end, so --since
+  // Escapes count against the PR, whenever the fix came: the record carries the PR's start, so --since
   // selects escapes by the PR they came from, like every other number here.
   for (const e of recs.filter((r) => r.kind === 'escape' && r.status === 'confirmed')) {
     const t = tiers[e.tier];
     if (t) (t.escaped ??= new Set()).add(e.prUrl ?? e.pr);
   }
-  // "No escapes" means something only after a scan that left nothing to decide.
-  const lastScan = records.filter((r) => r.kind === 'escape-scan').sort((a, b) => (a.ended ?? '').localeCompare(b.ended ?? '')).at(-1) ?? null;
-  const scanSettled = !!lastScan && lastScan.candidates === 0 && !lastScan.truncated;
+  const scans = escapeScans(records);
 
   // Facts a tuning proposal can rest on. Thresholds are deliberately conservative: a signal needs data.
   const signals = [];
@@ -412,10 +409,26 @@ export function aggregate(records, { since } = {}) {
     if (judged >= 20 && t.refuted / judged < 0.1) signals.push({ tier, kind: 'idle-skeptics', text: `skeptics refuted only ${pct(t.refuted, judged)} of ${judged} findings` });
     const escaped = t.escaped?.size ?? 0;
     if (t.merged >= 5 && escaped / t.merged >= 0.2) signals.push({ tier, kind: 'escapes', text: `${escaped} of ${t.merged} merged PRs had a defect that escaped review` });
-    if (t.merged >= 10 && escaped === 0 && scanSettled) signals.push({ tier, kind: 'no-escapes', text: `none of ${t.merged} merged PRs had a confirmed escape (as far as fix commits tell)` });
+    if (t.merged >= 10 && escaped === 0 && [...(t.mergedRepos ?? [])].every((repo) => scans[repo]?.settled)) signals.push({ tier, kind: 'no-escapes', text: `none of ${t.merged} merged PRs had a confirmed escape (as far as fix commits tell)` });
     if (t.fixed + t.declined >= 10 && t.declined / (t.fixed + t.declined) > 0.4) signals.push({ tier, kind: 'declined-often', text: `the fixer declined ${pct(t.declined, t.fixed + t.declined)} of the findings it handled` });
   }
-  return { rounds: rounds.length, prs: prs.length, tiers, phases, signals, lastScan };
+  return { rounds: rounds.length, prs: prs.length, tiers, phases, signals, scans };
+}
+
+// Per repository, the latest escape scan and whether "no escapes" can be trusted from it: the whole history
+// (no --since), every merged PR traced (none unresolved), nothing left unscanned, and every candidate decided.
+export function escapeScans(records) {
+  const byRepo = {};
+  for (const r of records) (byRepo[r.repo] ??= []).push(r);
+  const out = {};
+  for (const [repo, list] of Object.entries(byRepo)) {
+    const last = list.filter((r) => r.kind === 'escape-scan').sort((a, b) => (a.ended ?? '').localeCompare(b.ended ?? '')).at(-1);
+    if (!last) continue;
+    const waiting = undecided(list);
+    const settled = !last.since && last.unresolved === 0 && last.reviewed > 0 && !last.truncated && waiting === 0;
+    out[repo] = { ran: last.ended, waiting, truncated: last.truncated ?? 0, unresolved: last.unresolved ?? 0, since: last.since ?? null, settled };
+  }
+  return out;
 }
 
 function renderReport(agg, scopeLabel) {
@@ -438,9 +451,12 @@ function renderReport(agg, scopeLabel) {
     lines.push('', '## Before review', '', '| Phase | Runs | Median min | Median tokens |', '|---|---|---|---|');
     for (const [name, x] of Object.entries(agg.phases)) lines.push(`| ${name} | ${x.n} | ${median(x.minutes) ?? '–'} | ${M(median(x.tokens))} |`);
   }
-  lines.push('', agg.lastScan
-    ? `Escape scan: last run ${agg.lastScan.ended.slice(0, 10)}, ${agg.lastScan.candidates} candidate(s) waiting for a decision${agg.lastScan.truncated ? `, ${agg.lastScan.truncated} fix commit(s) not scanned yet` : ''}.`
-    : 'Escape scan: never run, so the Escaped column counts nothing yet.');
+  const scans = Object.entries(agg.scans ?? {});
+  if (!scans.length) lines.push('', 'Escape scan: never run, so the Escaped column counts nothing yet.');
+  for (const [repo, x] of scans) {
+    const open = [x.waiting && `${x.waiting} candidate(s) waiting for a decision`, x.truncated && `${x.truncated} fix commit(s) not scanned yet`, x.unresolved && `${x.unresolved} merged PR(s) not traced`, x.since && `limited to fixes since ${x.since}`].filter(Boolean);
+    lines.push('', `Escape scan${scans.length > 1 ? ` (${repo})` : ''}: last run ${x.ran.slice(0, 10)}, ${open.length ? open.join(', ') : 'complete'}.`);
+  }
   lines.push('', '## Signals', '');
   if (!agg.signals.length) lines.push('None yet: each signal needs at least 5 rounds or 10 to 20 findings behind it.');
   for (const s of agg.signals) lines.push(`- **${s.tier}** · ${s.kind}: ${s.text}`);
