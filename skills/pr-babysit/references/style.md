@@ -8,7 +8,7 @@ need them cannot be missed.
 
 1. Rules
 2. PR comments: triage, finding, replies, people's comments, round summary, report thread
-3. Chat: triage line, decisions, round limit, merge question, merge progress
+3. Chat: triage line, decisions, another round, round failed, round limit, merge question, merge progress
 4. Push notifications
 
 ## 1. Rules
@@ -55,7 +55,7 @@ Statuses below are pr-host's; on GitHub and GitLab the resolved ones (`fixed`, `
 - **Floor 55:** the legacy self-service layer must stay 1:1 with the legacy API.
 - **Safe because:** no supplier has called `/account-information` in 90 days. ⚠️ Unproven: round 1 checks this first.
 
-**Plan:** 2–4 rounds, done after 2 clean rounds in a row · 7 reviewers · 3 skeptics check every finding
+**Plan:** 2–3 rounds, done after a clean one with no major finding · round 1 reviews the whole change with 7 reviewers, later rounds only the fixes with 2 · 3 skeptics check every major finding
 ~~~
 
 ### Finding (`pr-babysit:R<n>-F<k>`, inline, status `active`)
@@ -143,7 +143,7 @@ Answered (status `closed`):
 ### Round summary (`pr-babysit:R<n>-summary`, posted when the round closes, status `closed`)
 
 ~~~markdown
-🤖 **Round 2 of up to 4 · high review:** ✅ 2 fixed · 🧭 1 decided · ↩️ 1 declined
+🤖 **Round 2 of up to 3 · high review:** ✅ 2 fixed · 🧭 1 decided · ↩️ 1 declined
 
 | | Finding | Outcome |
 |---|---|---|
@@ -152,7 +152,7 @@ Answered (status `closed`):
 | 🟡 | [R2-F3](<thread url>) no test for a disabled supplier | ✅ [`9a8b7c6`](<commit url>) |
 | 🟡 | [R2-F4](<thread url>) log line shows the key prefix | ↩️ by design, ADR-0038 |
 
-**Not clean** (2 major) → round 3 is next; done after 2 clean rounds in a row.
+**Not clean** (2 major) → round 3 is next, on the fixes only; done after a round with no major finding.
 
 **Disproved before posting:** 3
 
@@ -162,15 +162,15 @@ Answered (status `closed`):
 
 **Nits:** 2 fixed in [`aa11bb2`](<commit url>), 1 skipped
 
-_Reviewed `fa6b973` · 7 reviewers (correctness ×3, standards and intent, blast radius, tests, adversary) · opus xhigh · 3 skeptics per finding_
+_Reviewed the fixes since `c4d5e6f` up to `fa6b973` · 2 reviewers (correctness, tests) · opus high · 3 skeptics per major finding, 1 for the minor ones_
 ~~~
 
 A clean round is one line plus the machinery line:
 
 ~~~markdown
-🤖 **Round 3 of up to 4 · high review:** ✅ clean, nothing found
+🤖 **Round 3 of up to 3 · high review:** ✅ clean, nothing found
 
-_Reviewed `b2c3d4e` · 7 reviewers · opus xhigh · 2 findings disproved by skeptics_
+_Reviewed the fixes since `fa6b973` up to `b2c3d4e` · 2 reviewers · opus high · 2 findings disproved by skeptics_
 ~~~
 
 ### Report thread (`pr-babysit:report`, status `closed`)
@@ -239,12 +239,30 @@ Removing `/account-information` breaks any supplier tooling that still calls it,
 Reply like `1A 2B`, or `ok` for all recommendations.
 ~~~
 
+### Another round?
+
+Sent before any round past the tier's minimum. The answer is yes or no.
+
+~~~markdown
+**PR !27887 · round 2 of up to 3 is done:** ✅ 3 fixed, nothing major open
+
+Another round would review the 4 fix commits with 2 reviewers (~1 h). Run it, or go to the report?
+~~~
+
+### Round failed
+
+~~~markdown
+**PR !27887 · round 3 stopped:** 5 reviewers got no answer (weekly usage limit, resets Oct 30, 9 pm). Nothing from this round was posted.
+
+Say **retry** when the limit has reset, or **report** to finish with the rounds that completed.
+~~~
+
 ### Round limit reached
 
 ~~~markdown
-**PR !27887 · round limit reached (4 of 4).** 1 finding is still open:
+**PR !27887 · round limit reached (3 of 3).** 1 finding is still open:
 
-- 🟠 [R4-F1](<thread url>) the retry loop can submit test results twice
+- 🟠 [R3-F1](<thread url>) the retry loop can submit test results twice
 
 Run **another round**, **accept** the PR as it is (the finding stays open on the PR), or **stop** here?
 ~~~
@@ -278,6 +296,8 @@ Only for ❓ items and endings. One line, under 200 characters, the PR first, th
 | When | Message |
 |---|---|
 | decisions wait | `PR !27887: 2 decisions need you (round 2)` |
+| another round to approve | `PR !27887: round 2 done, nothing major open. Another round?` |
+| round failed | `PR !27887: round 3 stopped, usage limit reached. Nothing posted` |
 | review finished | `PR !27887 ready to merge: risk 52, 3 fixed, 1 worth a glance` |
 | round limit hit | `PR !27887: round limit reached, 1 major finding open` |
 | merge stuck | `PR !27887 merge stuck: check-frontends failed 3 times` |

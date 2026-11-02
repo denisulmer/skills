@@ -2,6 +2,28 @@
 
 Each `## <version>` section becomes the notes of the GitHub release `v<version>`. Newest first.
 
+## 3.1.0
+
+pr-babysit spends far less per PR: later rounds review only the fixes, reviewers stop building and
+running tests, and a failed or extra round asks you instead of going on. Nothing to do but update.
+
+- **Delta rounds.** Round 1 (or one after the tier rose or someone else pushed) reviews the whole PR;
+  every later round reviews only the commits since the last one, with the tier's new `followUpLenses`.
+- **High tier converges.** A round is clean when it keeps no major finding (was: no minor), one clean
+  round is enough (was: two), and it stops at 3 rounds (was: 4). Reviewers run at `high` effort.
+  Critical is unchanged.
+- **Read-only reviewers.** Only the adversary builds or runs tests, and only the filtered tests that
+  prove a point. Skeptics only read.
+- **Cheaper skeptics.** Major and blocker findings still get the tier's skeptics each; minor findings
+  share one batched skeptic on the tier's `skepticModel` (Sonnet). The portion mapper runs on Sonnet.
+- **Test gaps are nits** unless the reviewer names a plausible bug the gap lets through.
+- **Failed rounds stop.** When a reviewer or skeptic returns nothing (a usage limit, say), the round
+  returns `valid: false`, nothing is posted, and you get a Round failed message. Retry resumes the run
+  so finished agents are not paid for twice.
+- **Another round?** Before any round past the tier's minimum, you're asked first.
+- The review script enters the conversation at most once, even when the plugin directory is not
+  readable as a `scriptPath`.
+
 ## 3.0.0
 
 The plugin is renamed `denisulmer` → `denisulmer-skills`; the skills themselves are unchanged.

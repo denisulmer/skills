@@ -88,11 +88,12 @@ Follow [references/rounds.md](references/rounds.md). Per round:
 1. **Refresh.** Fetch. If `origin/<source>` has commits you did not push, bring them in (fast-forward,
    or merge when diverged; never rebase). Rerun pr-risk's `signals.mjs`; if a new floor lifts the score into
    a higher tier, switch up and say why in the round summary. Never switch down.
-2. **Review.** Start `Workflow` with `scriptPath: <base>/workflows/review-round.js` and the args from
-   rounds.md. The user's invocation of this skill is their opt-in to the workflow, and the tier sets its
-   size: a high or critical round runs a few dozen agents. It runs in the background; wait for its
+2. **Review.** Start `Workflow` with the review-round script and the args from rounds.md (§1 says how to
+   launch it and which `scope` to pass: `full` in round 1, `delta` after that). The user's invocation of
+   this skill is their opt-in to the workflow, and the tier sets its size: a full high or critical round
+   runs one to two dozen agents, a delta round a handful. It runs in the background; wait for its
    notification. It returns verified findings, nits, what the skeptics refuted, and verdicts on people's
-   comments.
+   comments, or `valid: false` when agents failed: then stop the round (rounds.md §1) and post nothing.
 3. **Record.** One inline thread per finding, a reply on each person's thread.
 4. **Fix** (owner mode). One fixer subagent per round, briefed with
    [references/fixer.md](references/fixer.md). It commits one finding per commit and returns a decision
@@ -105,6 +106,8 @@ Follow [references/rounds.md](references/rounds.md). Per round:
    - Done when the round number ≥ `minRounds` and the last `cleanRoundsNeeded` rounds were clean.
    - At `maxRounds` without that: stop, notify, and send the Round limit message (another round,
      accept as it is, or stop).
+   - Before a round past `minRounds`, send the Another round question from style.md and wait for the
+     user's yes. A full high round costs hours and a large share of a weekly usage limit.
    - Otherwise start the next round.
 
 ## 3. Report
@@ -128,10 +131,11 @@ the worktree up afterwards.
 ## Review-only mode
 
 Triage and rounds as above, minus fixing, pushing and resolving. One round per head commit: when the
-author pushes, the next round reviews what changed. Findings stay `active` for the author. The report is a
+author pushes, the next round is a delta round over what changed. Findings stay `active` for the author. The report is a
 thread; the description and the merge belong to the author.
 
 ## Notifications
 
 Use `PushNotification` (load it with ToolSearch `select:PushNotification` when it is deferred) only for
-the events in style.md's table: decisions waiting, review finished, round limit hit, merge stuck, merged.
+the events in style.md's table: decisions waiting, another round to approve, round failed, review
+finished, round limit hit, merge stuck, merged.

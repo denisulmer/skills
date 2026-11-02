@@ -16,11 +16,29 @@ Every comment and chat message below follows [style.md](style.md), which holds t
 Write the args to `<scratch>/round-<n>-args.json` (keep it for the report) and pass the object as
 `args`. Do not stringify it.
 
+**Launching.** Try `scriptPath: <base>/workflows/review-round.js` first. If the tool refuses the path as
+unreadable (a plugin install directory often is), pass the file's contents once as `script`, and for every
+later round use the `scriptPath` that launch returned, so the script enters this conversation only once.
+
+**Scope.**
+
+- `full`: the tier's lenses over the whole PR. Round 1, a round after the tier went up, and a round after
+  someone other than this skill pushed code (owner mode).
+- `delta`: the tier's `followUpLenses` over the commits since `sinceSha` only. Every other round, and every
+  round after the first in review-only mode.
+
+**Reading the result.** Use the returned object; don't open the agents' transcripts. When it says
+`valid: false`, post nothing from it: tell the user its `reason` and `failed` list in one message, send the
+Round failed notification, and stop. A usage limit is the usual cause. To retry, start the same round
+again with `resumeFromRunId: <its run id>`, so the agents that finished are not paid for twice (same
+session only; in a new session, rerun the round).
+
 ```json
 {
   "round": 2,
   "tierName": "high",
   "tier": { "...": "the tier's entry from tiers.json, unchanged" },
+  "scope": "delta",
   "pr": { "id": 27887, "title": "...", "webUrl": "...", "score": 68,
           "intent": "What the PR is for, in two or three sentences from its description and linked work item." },
   "repo": { "worktree": "C:/ws/monorepo-pr-27887", "mergeBase": "<git merge-base origin/<target> HEAD>",
@@ -42,7 +60,8 @@ Write the args to `<scratch>/round-<n>-args.json` (keep it for the report) and p
 - `human`: threads of `kind: human` that are `active` or `pending` and whose last comment is not yours.
   Include the whole conversation, so a reply to an earlier refutation is judged in context.
 - If the Workflow tool is unavailable, tell the user, read the workflow file and run the same reviewers
-  and skeptics as parallel Agent calls with its prompts.
+  and skeptics as parallel Agent calls with its prompts, keeping its rules: only the adversary builds or
+  runs tests, and minor findings share one skeptic.
 
 ## 2. Recording findings
 

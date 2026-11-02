@@ -3,7 +3,7 @@ export const meta = {
   description: 'One pr-babysit review round: tier-sized reviewer lenses, skeptics that try to refute each finding, verdicts on human comments',
   whenToUse: 'Started by the pr-babysit skill once per review round, with args built from references/tiers.json',
   phases: [
-    { title: 'Map', detail: 'split the PR into review portions (tiers with portion lenses)' },
+    { title: 'Map', detail: 'split the PR into review portions (full rounds of tiers with portion lenses)' },
     { title: 'Review', detail: 'one reviewer per lens, and per portion where the tier asks for it' },
     { title: 'Verify', detail: 'skeptics try to refute each finding; human comments get a verdict' },
   ],
@@ -11,6 +11,7 @@ export const meta = {
 
 // args: {
 //   round, tierName, tier,                     tier = the entry from references/tiers.json
+//   scope,                                      'full' (whole PR, the tier's lenses) or 'delta' (commits since sinceSha, followUpLenses)
 //   pr: { id, title, webUrl, intent, score },
 //   repo: { worktree, mergeBase, headSha, sinceSha },   sinceSha = head reviewed last round, or null
 //   signals: { hitIds: [...], reasons: [...], destructive: [...] },
@@ -73,6 +74,16 @@ const VERDICT = {
   },
   required: ['refuted', 'reason', 'severity', 'evidence'],
 }
+const BATCH_VERDICT = {
+  type: 'object',
+  properties: {
+    verdicts: {
+      type: 'array',
+      items: { ...VERDICT, properties: { index: { type: 'integer', minimum: 0 }, ...VERDICT.properties }, required: ['index', ...VERDICT.required] },
+    },
+  },
+  required: ['verdicts'],
+}
 const HUMAN_VERDICT = {
   type: 'object',
   properties: {
@@ -93,7 +104,7 @@ const LENSES = {
   'blast-radius':
     'Find what this change breaks outside the diff. Listing callers is not the job; find what a search will not show you: serialized and wire formats, database columns and migrations, generated clients, configuration and feature flags, other services or languages reading the same data, and deploy order (the previous release running against the new schema, or the new code against the old). Name the one fact the change is safe because of, then try to prove or disprove it by running something.',
   tests:
-    'Decide whether the risky paths of this change are covered by tests that would fail if the change were wrong. Read the tests the change adds and the tests that exercise the code it changes; run them where that is cheap. Report a gap only where a bug is plausible, and name the test that would catch it.',
+    'Decide whether the risky paths of this change are covered by tests that would fail if the change were wrong. Read the tests the change adds and the tests that exercise the code it changes. Report a gap only where a bug is plausible, and name the test that would catch it.',
   adversary:
     'Break this change. A finding counts only if you ran something that shows the wrong behaviour: a failing test, a repro script, command output. Report the command, what it printed, and what the intent requires instead. Leave out anything you did not run.',
   'data-migration':
@@ -103,12 +114,17 @@ const LENSES = {
 }
 
 const SKEPTICS = [
-  'Is the claim true? Re-read the cited lines in the PR head and rerun any cited command (in your own checkout if it builds or tests). If the code does not do what the finding says, it is refuted.',
+  'Is the claim true? Re-read the cited lines in the PR head and check any cited output against the code. If the code does not do what the finding says, it is refuted.',
   'Does it matter? Grant that the code behaves as described. Is there a plausible path on which it hurts someone, and does it break the PR\'s intent or something the repository promises? If not, it is refuted. Otherwise say which severity it deserves.',
   'Is it already handled? Look for a guard upstream, a framework default, a test, or a constraint that makes the failure impossible, and check whether it repeats an earlier finding that was declined for a reason that still holds. If so, it is refuted.',
 ]
 
-const { round, tierName, tier, pr, repo, signals, profileNotes = '', prior = [], human = [], scratch } = args
+const { round, tierName, tier, scope = 'full', pr, repo, signals, profileNotes = '', prior = [], human = [], scratch } = args
+const delta = scope === 'delta' && Boolean(repo.sinceSha)
+
+// Only these lenses build or run tests; every other reviewer and every skeptic only reads.
+const RUNNING_LENSES = new Set(['adversary'])
+const MINORS_PER_SKEPTIC = 6
 
 const signalsText = [
   signals.reasons?.length ? signals.reasons.join('; ') : 'no danger-map rules matched',
@@ -117,40 +133,74 @@ const signalsText = [
 const priorText = prior.length ? prior.map((p) => `- ${p.key} [${p.severity}] ${p.file}:${p.line} ${p.title} -> ${p.resolution}`).join('\n') : '(none)'
 const diffCmd = `git -C "${repo.worktree}" diff ${repo.mergeBase}..${repo.headSha}`
 
-function rules(label) {
+function rules(label, canRun) {
   return [
-    `Do not edit, stage or commit anything in ${repo.worktree}. Keep scratch files under ${scratch}/${label}. To build or run tests, use a checkout of your own, because parallel builds in one checkout collide: git -C "${repo.worktree}" worktree add --detach "${scratch}/${label}/wt" ${repo.headSha}, and remove it with git -C "${repo.worktree}" worktree remove --force "${scratch}/${label}/wt" when you are done.`,
-    'Severity: blocker = breaks the intent, loses or corrupts data, opens a security hole, or cannot be rolled back. major = a bug on a plausible path, a broken contract for a consumer, or a risky path no test covers. minor = a real edge case, or a maintainability cost you can name concretely. nit = wording, naming, style; anything that changes no behaviour.',
+    canRun
+      ? `Do not edit, stage or commit anything in ${repo.worktree}. Keep scratch files under ${scratch}/${label}. To build or run tests, use a checkout of your own, because parallel builds in one checkout collide: git -C "${repo.worktree}" worktree add --detach "${scratch}/${label}/wt" ${repo.headSha}, and remove it with git -C "${repo.worktree}" worktree remove --force "${scratch}/${label}/wt" when you are done. Run only what proves a point: the one test or test class that shows it (a filtered run), never a whole suite, and build at most once.`
+      : `Read only: do not edit, stage or commit anything in ${repo.worktree}, and do not build, run tests or create checkouts. Read the code, and use git and search. Keep any scratch files under ${scratch}/${label}.`,
+    'Severity: blocker = breaks the intent, loses or corrupts data, opens a security hole, or cannot be rolled back. major = a bug on a plausible path, a broken contract for a consumer, or a risky path no test covers. minor = a real edge case, or a maintainability cost you can name concretely. nit = wording, naming, style; anything that changes no behaviour. A gap in a test or a convention check is minor only when you name a plausible bug it lets through; otherwise it is a nit.',
     'Every finding needs a file and line in the PR head, the claim, the path on which it fails, and evidence: the file:line you read and, for anything you ran, the exact command and what it printed. Leave out what you cannot support. An empty list is the right answer when the code is right.',
   ].join('\n\n')
 }
 
-function context(label, portion) {
+function scopeText() {
+  if (delta) {
+    return [
+      `Under review: only the commits since the last round, git -C "${repo.worktree}" diff ${repo.sinceSha}..${repo.headSha} (log: git -C "${repo.worktree}" log --oneline ${repo.sinceSha}..${repo.headSha}).`,
+      'Most of them fix earlier findings: check that each fix is right and complete and breaks nothing else. Report a defect outside these commits only when they caused it.',
+      `The whole PR, for background only: ${diffCmd}`,
+    ].join(' ')
+  }
   return [
-    `Pull request !${pr.id} "${pr.title}" (${pr.webUrl}), review round ${round}, ${tierName} tier (risk ${pr.score}/100).`,
-    `Intent: ${pr.intent}`,
-    `Code: ${repo.worktree} is checked out at the PR head ${repo.headSha}. The change: ${diffCmd}`,
+    `The change: ${diffCmd}`,
     repo.sinceSha
       ? `Since the last round these commits landed; look at them first, then at the rest: git -C "${repo.worktree}" log --oneline ${repo.sinceSha}..${repo.headSha}`
       : 'This is the first review round.',
+  ].join('\n\n')
+}
+
+function context(label, portion, canRun = false) {
+  return [
+    `Pull request !${pr.id} "${pr.title}" (${pr.webUrl}), review round ${round}, ${tierName} tier (risk ${pr.score}/100).`,
+    `Intent: ${pr.intent}`,
+    `Code: ${repo.worktree} is checked out at the PR head ${repo.headSha}.`,
+    scopeText(),
     portion
       ? `Your portion: ${portion.name}. Files: ${portion.files.join(', ')}. Focus: ${portion.focus}. Read anything else you need, but report only defects in this portion or caused by it.`
       : '',
     `Risk signals: ${signalsText}.`,
     profileNotes ? `Repository notes:\n${profileNotes}` : '',
     `Raised in earlier rounds (repeat one only with new evidence, and say what is new):\n${priorText}`,
-    rules(label),
+    rules(label, canRun),
   ].filter(Boolean).join('\n\n')
+}
+
+function invalid(stage, failed, extra = {}) {
+  log(`Round ${round} is invalid: no result from ${failed.join(', ')}.`)
+  return {
+    round,
+    tier: tierName,
+    scope: delta ? 'delta' : 'full',
+    valid: false,
+    clean: null,
+    reason: `${failed.length} ${stage} returned nothing (a usage limit or an error), so this round is incomplete and its findings are not verified.`,
+    failed,
+    findings: [],
+    nits: [],
+    dropped: [],
+    human: [],
+    ...extra,
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
 phase('Map')
 
 let portions = null
-if (tier.portionLenses.length > 0) {
+if (!delta && tier.portionLenses.length > 0) {
   const mapped = await agent(
     `Split pull request !${pr.id} "${pr.title}" into review portions along its seams (a module, a layer, a feature slice) so that one reviewer can hold a whole portion in mind. Every changed file belongs to exactly one portion. Use two to six portions; a small change may be one. For each, give a name, its files, and what a reviewer should look at hardest there.\n\nIntent: ${pr.intent}\nChanged files: git -C "${repo.worktree}" diff --stat ${repo.mergeBase}..${repo.headSha}\nDo not modify anything.`,
-    { label: 'map', phase: 'Map', schema: PORTIONS, ...modelOpt(tier.model), effort: 'medium' },
+    { label: 'map', phase: 'Map', schema: PORTIONS, model: 'sonnet', effort: 'medium' },
   )
   portions = mapped?.portions?.length ? mapped.portions.slice(0, 6) : null
   if (!portions) log('The mapper returned no portions, so portion lenses review the whole PR.')
@@ -160,20 +210,25 @@ if (tier.portionLenses.length > 0) {
 // ---------------------------------------------------------------------------------------------
 phase('Review')
 
-const conditional = []
-if (tier.conditionalLenses) {
-  if ((signals.hitIds ?? []).some((id) => /migration/.test(id))) conditional.push('data-migration')
-  if ((signals.hitIds ?? []).some((id) => /auth|self-service|security/.test(id))) conditional.push('security')
-}
 const tasks = []
-for (const lens of tier.portionLenses) {
-  if (portions) portions.forEach((portion) => tasks.push({ lens, portion, label: `${lens}-${slug(portion.name)}`, model: tier.model }))
-  else tasks.push({ lens, label: lens, model: tier.model })
+if (delta) {
+  const followUp = tier.followUpLenses?.length ? tier.followUpLenses : tier.wholeLenses
+  for (const lens of followUp) tasks.push({ lens, label: lens, model: tier.model })
+} else {
+  const conditional = []
+  if (tier.conditionalLenses) {
+    if ((signals.hitIds ?? []).some((id) => /migration/.test(id))) conditional.push('data-migration')
+    if ((signals.hitIds ?? []).some((id) => /auth|self-service|security/.test(id))) conditional.push('security')
+  }
+  for (const lens of tier.portionLenses) {
+    if (portions) portions.forEach((portion) => tasks.push({ lens, portion, label: `${lens}-${slug(portion.name)}`, model: tier.model }))
+    else tasks.push({ lens, label: lens, model: tier.model })
+  }
+  for (const lens of new Set([...tier.wholeLenses, ...conditional])) {
+    if (!tier.portionLenses.includes(lens) || portions) tasks.push({ lens, label: lens, model: tier.model })
+  }
+  if (tier.secondModel) tasks.push({ lens: 'adversary', label: `adversary-${tier.secondModel}`, model: tier.secondModel })
 }
-for (const lens of new Set([...tier.wholeLenses, ...conditional])) {
-  if (!tier.portionLenses.includes(lens) || portions) tasks.push({ lens, label: lens, model: tier.model })
-}
-if (tier.secondModel) tasks.push({ lens: 'adversary', label: `adversary-${tier.secondModel}`, model: tier.secondModel })
 
 const humanPrompt = (h) =>
   [
@@ -184,20 +239,21 @@ const humanPrompt = (h) =>
   ].join('\n\n')
 
 const [reviews, humanVerdicts] = await Promise.all([
-  parallel(tasks.map((t) => () => agent(`${LENSES[t.lens]}\n\n${context(t.label, t.portion)}`, { label: `review:${t.label}`, phase: 'Review', schema: FINDINGS, ...modelOpt(t.model), effort: tier.effort }))),
+  parallel(tasks.map((t) => () => agent(`${LENSES[t.lens]}\n\n${context(t.label, t.portion, RUNNING_LENSES.has(t.lens))}`, { label: `review:${t.label}`, phase: 'Review', schema: FINDINGS, ...modelOpt(t.model), effort: tier.effort }))),
   parallel(human.map((h) => () => agent(humanPrompt(h), { label: `comment:${h.threadId}`, phase: 'Verify', schema: HUMAN_VERDICT, ...modelOpt(tier.model), effort: tier.effort }))),
 ])
 
-const failedReviewers = []
+// A missing reviewer means the round did not look where it was meant to; stop before spending on skeptics.
+const failedReviews = [
+  ...tasks.filter((_, i) => !reviews[i]).map((t) => `review:${t.label}`),
+  ...human.filter((_, i) => !humanVerdicts[i]).map((h) => `comment:${h.threadId}`),
+]
+if (failedReviews.length) return invalid('reviewers', failedReviews)
+
 const raw = []
 reviews.forEach((review, i) => {
-  if (!review) {
-    failedReviewers.push(tasks[i].label)
-    return
-  }
   for (const finding of review.findings) raw.push({ ...finding, lenses: [tasks[i].label] })
 })
-if (failedReviewers.length) log(`No result from: ${failedReviewers.join(', ')}`)
 
 // Merge reports of the same defect: same file, nearby lines, overlapping wording.
 const words = (f) => new Set(`${f.title} ${f.claim}`.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3))
@@ -222,38 +278,75 @@ for (const finding of raw.sort((a, b) => rank(b.severity) - rank(a.severity))) {
 phase('Verify')
 
 const nits = merged.filter((f) => f.severity === 'nit')
-const candidates = merged.filter((f) => f.severity !== 'nit')
+const serious = merged.filter((f) => rank(f.severity) >= rank('major'))
+const minors = merged.filter((f) => f.severity === 'minor')
 const skepticModels = [tier.model, tier.secondModel ?? tier.model]
+const findingText = (f) => `[${f.severity}] ${f.file}:${f.line}${f.endLine ? `-${f.endLine}` : ''} - ${f.title}\nClaim: ${f.claim}\nImpact: ${f.impact}\nEvidence given: ${f.evidence}`
 
+// Major and blocker findings: tier.refuters independent skeptics each, one question apiece.
 const refutePrompt = (f, k) =>
   [
     `Try to refute this finding from a review of pull request !${pr.id}. You are a skeptic: it stands only if it survives your own check.`,
     SKEPTICS[k % SKEPTICS.length],
-    `Finding [${f.severity}] ${f.file}:${f.line}${f.endLine ? `-${f.endLine}` : ''} - ${f.title}\nClaim: ${f.claim}\nImpact: ${f.impact}\nEvidence given: ${f.evidence}`,
+    `Finding ${findingText(f)}`,
     context(`skeptic-${slug(f.title)}-${k + 1}`),
   ].join('\n\n')
 
-const judged = tier.refuters > 0
-  ? await parallel(candidates.map((f) => () =>
-      parallel(Array.from({ length: tier.refuters }, (_, k) => () =>
-        agent(refutePrompt(f, k), { label: `skeptic:${slug(f.title)}-${k + 1}`, phase: 'Verify', schema: VERDICT, ...modelOpt(skepticModels[k % 2]), effort: tier.effort }),
-      )).then((votes) => ({ f, votes: votes.filter(Boolean) }))))
-  : candidates.map((f) => ({ f, votes: null }))
+// Minor findings: one skeptic checks a batch, asking all three questions of each.
+const batchPrompt = (batch, b) =>
+  [
+    `Try to refute each of these findings from a review of pull request !${pr.id}. You are a skeptic: a finding stands only if it survives your own check. Ask of each, in turn:`,
+    SKEPTICS.map((s, k) => `${k + 1}. ${s}`).join('\n'),
+    'Return one verdict per finding, with its index.',
+    batch.map((f, i) => `Finding ${i}: ${findingText(f)}`).join('\n\n'),
+    context(`skeptic-minors-${b + 1}`),
+  ].join('\n\n')
+
+const batches = []
+for (let i = 0; i < minors.length; i += MINORS_PER_SKEPTIC) batches.push(minors.slice(i, i + MINORS_PER_SKEPTIC))
+
+const checked = tier.refuters > 0
+const [seriousVotes, batchVerdicts] = checked
+  ? await Promise.all([
+      parallel(serious.map((f) => () =>
+        parallel(Array.from({ length: tier.refuters }, (_, k) => () =>
+          agent(refutePrompt(f, k), { label: `skeptic:${slug(f.title)}-${k + 1}`, phase: 'Verify', schema: VERDICT, ...modelOpt(skepticModels[k % 2]), effort: tier.effort }),
+        )))),
+      parallel(batches.map((batch, b) => () =>
+        agent(batchPrompt(batch, b), { label: `skeptic:minors-${b + 1}`, phase: 'Verify', schema: BATCH_VERDICT, ...modelOpt(tier.skepticModel ?? tier.model), effort: 'high' }))),
+    ])
+  : [[], []]
+
+const failedSkeptics = []
+const judged = []
+if (!checked) {
+  for (const f of [...serious, ...minors]) judged.push({ f, votes: null })
+} else {
+  serious.forEach((f, i) => {
+    const votes = (seriousVotes[i] ?? []).filter(Boolean)
+    if (votes.length < tier.refuters) failedSkeptics.push(`skeptics of "${f.title}"`)
+    judged.push({ f, votes, majority: tier.refuteMajority })
+  })
+  batches.forEach((batch, b) => {
+    const verdicts = batchVerdicts[b]?.verdicts ?? []
+    batch.forEach((f, i) => {
+      const v = verdicts.find((x) => x.index === i)
+      if (!v) failedSkeptics.push(`skeptic of "${f.title}"`)
+      judged.push({ f, votes: v ? [v] : [], majority: 1 })
+    })
+  })
+}
+if (failedSkeptics.length) return invalid('skeptics', failedSkeptics, { unverified: merged.length })
 
 const kept = []
 const dropped = []
-for (const entry of judged.filter(Boolean)) {
-  const { f, votes } = entry
+for (const { f, votes, majority } of judged) {
   if (votes === null) {
     kept.push({ ...f, verification: 'not checked by skeptics at this tier' })
     continue
   }
-  if (votes.length === 0) {
-    kept.push({ ...f, verification: 'skeptics returned nothing; kept unverified' })
-    continue
-  }
   const refuting = votes.filter((v) => v.refuted)
-  if (refuting.length >= tier.refuteMajority) {
+  if (refuting.length >= majority) {
     dropped.push({ title: f.title, file: f.file, line: f.line, lenses: f.lenses, reason: refuting.map((v) => v.reason).join(' / ') })
     continue
   }
@@ -269,10 +362,6 @@ for (const entry of judged.filter(Boolean)) {
 const humanResults = []
 humanVerdicts.forEach((verdict, i) => {
   const h = human[i]
-  if (!verdict) {
-    humanResults.push({ threadId: h.threadId, verdict: 'unchecked', reply: '' })
-    return
-  }
   if (verdict.verdict === 'confirmed' && verdict.finding) {
     kept.push({ ...verdict.finding, lenses: [`comment by ${h.author}`], verification: 'confirmed against the code', humanThreadId: h.threadId })
   }
@@ -284,11 +373,13 @@ kept.forEach((f, i) => { f.id = `R${round}-F${i + 1}` })
 humanResults.forEach((r) => { r.findingId = kept.find((f) => f.humanThreadId === r.threadId)?.id ?? null })
 
 const clean = !kept.some((f) => rank(f.severity) >= rank(tier.severityBar))
-log(`Round ${round}: ${kept.length} findings kept, ${dropped.length} refuted, ${nits.length} nits, ${clean ? 'clean' : 'not clean'}.`)
+log(`Round ${round} (${delta ? 'delta' : 'full'}): ${kept.length} findings kept, ${dropped.length} refuted, ${nits.length} nits, ${clean ? 'clean' : 'not clean'}.`)
 
 return {
   round,
   tier: tierName,
+  scope: delta ? 'delta' : 'full',
+  valid: true,
   clean,
   findings: kept,
   nits: nits.map((n) => ({ title: n.title, file: n.file, line: n.line, suggestedFix: n.suggestedFix })),
@@ -297,7 +388,7 @@ return {
   coverage: {
     reviewers: tasks.map((t) => t.label),
     portions: portions ? portions.map((p) => p.name) : [],
-    failedReviewers,
-    skepticsPerFinding: tier.refuters,
+    skepticsPerMajorFinding: tier.refuters,
+    minorSkeptics: checked ? batches.length : 0,
   },
 }
