@@ -99,6 +99,10 @@ When the user asks how much review the PR needs, describe its tier from
 
 Post the result to the PR only when asked; babysit-pr posts its own triage thread.
 
+**A plan instead of a change** (spec-feature's forecast): list the files the plan expects to touch, one per
+line, and run `signals.mjs --planned <file> --base origin/<target> --repo <checkout>` instead of step 2; the
+rest is the same, judged on what the plan describes.
+
 ## Scoring is not reviewing
 
 Stop as soon as you can explain the number and name what the review should watch. Proving the safety

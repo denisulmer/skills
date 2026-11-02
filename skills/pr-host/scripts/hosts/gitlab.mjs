@@ -5,7 +5,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
-  RESOLVED_STATUSES, UsageError, checkStatus, deriveStatus, enc, lineRange, normalizeStrategy, optionalStatus,
+  RESOLVED_STATUSES, UsageError, openPr, checkStatus, deriveStatus, enc, lineRange, normalizeStrategy, optionalStatus,
   peopleComments, readBody, readMarker, request, requirePr, watchLoop, watchState, withMarker,
 } from '../lib.mjs';
 
@@ -473,6 +473,22 @@ export const commands = {
     const branch = opts.branch.replace(/^refs\/heads\//, '');
     const mrs = await gl(c, 'GET', `${projectApi(c)}/merge_requests?source_branch=${enc(branch)}&state=opened&per_page=100`);
     return mrs.map((mr) => ({ id: mr.iid, title: mr.title, isDraft: !!mr.draft, webUrl: mr.web_url }));
+  },
+
+
+  async open(c, _pos, opts) {
+    requireToken(c);
+    return openPr(c, opts, {
+      host: 'GitLab',
+      limit: DESCRIPTION_LIMIT,
+      find: (branch) => commands.find(c, [], { branch }),
+      defaultBranch: async () => (await project(c)).default_branch,
+      // GitLab marks a draft by its title.
+      create: async ({ source, target, title, description, draft }) => {
+        const mr = await gl(c, 'POST', `${projectApi(c)}/merge_requests`, { source_branch: source, target_branch: target, title: draft ? `Draft: ${title}` : title, description });
+        return mr.dryRun ? null : { id: mr.iid, title: mr.title, isDraft: !!mr.draft, webUrl: mr.web_url };
+      },
+    });
   },
 
   async show(c) {

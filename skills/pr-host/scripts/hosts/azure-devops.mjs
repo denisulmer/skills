@@ -2,7 +2,7 @@
 // the signed-in Azure CLI.
 
 import {
-  UsageError, checkStatus, enc, lineRange, normalizeStrategy, optionalStatus, peopleComments, readBody,
+  openPr, UsageError, checkStatus, enc, lineRange, normalizeStrategy, optionalStatus, peopleComments, readBody,
   readMarker, request, requirePr, sh, watchLoop, watchState, withMarker,
 } from '../lib.mjs';
 
@@ -194,6 +194,20 @@ export const commands = {
     const ref = opts.branch.startsWith('refs/') ? opts.branch : `refs/heads/${opts.branch}`;
     const data = await ado('GET', `${repoApi(c)}/pullrequests?searchCriteria.sourceRefName=${enc(ref)}&searchCriteria.status=active&api-version=${API}`);
     return data.value.map((pr) => ({ id: pr.pullRequestId, title: pr.title, isDraft: !!pr.isDraft, webUrl: prWebUrl({ ...c, prId: pr.pullRequestId }) }));
+  },
+
+
+  async open(c, _pos, opts) {
+    return openPr(c, opts, {
+      host: 'Azure DevOps',
+      limit: DESCRIPTION_LIMIT,
+      find: (branch) => commands.find(c, [], { branch }),
+      defaultBranch: async () => (await ado('GET', `${repoApi(c)}?api-version=${API}`)).defaultBranch,
+      create: async ({ source, target, title, description, draft }) => {
+        const pr = await ado('POST', `${repoApi(c)}/pullrequests?api-version=${API}`, { sourceRefName: `refs/heads/${source}`, targetRefName: `refs/heads/${target}`, title, description, isDraft: draft });
+        return pr.dryRun ? null : { id: pr.pullRequestId, title: pr.title, isDraft: !!pr.isDraft, webUrl: prWebUrl({ ...c, prId: pr.pullRequestId }) };
+      },
+    });
   },
 
   async show(c) {

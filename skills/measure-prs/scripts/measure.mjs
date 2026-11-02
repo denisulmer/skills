@@ -6,6 +6,8 @@
 //                           --started <iso> --scratch <dir> [--ended <iso>] [--session <id>]
 //   node measure.mjs pr     --repo <checkout> --pr <id> --pr-url <url> --tier <t> --score <n> --outcome <o>
 //                           --started <iso> --scratch <dir> [--ended <iso>] [--session <id>]
+//   node measure.mjs phase  --repo <checkout> --name spec|build --branch <branch> --started <iso> --scratch <dir>
+//                           [--pr <id>] [--ended <iso>] [--session <id>]
 //   node measure.mjs tokens --scratch <dir> --started <iso> [--ended <iso>] [--session <id>]
 //   node measure.mjs import --repo <checkout> --pr <id|url>
 //   node measure.mjs report [--repo <checkout> | --all] [--since YYYY-MM-DD] [--json]
@@ -74,7 +76,7 @@ export function repoSlug(repo) {
 }
 
 const ledgerFile = (slug) => join(LEDGER_DIR, `${slug}.jsonl`);
-const recordKey = (r) => `${r.kind}|${r.prUrl ?? r.pr}|${r.round ?? ''}`;
+const recordKey = (r) => `${r.kind}|${r.prUrl ?? r.pr ?? r.branch}|${r.round ?? r.name ?? ''}`;
 
 function readLedger(file) {
   if (!existsSync(file)) return [];
@@ -224,7 +226,7 @@ function baseRecord(opts, kind) {
     v: 1,
     kind,
     repo: repoSlug(opts.repo),
-    pr: String(opts.pr),
+    pr: opts.pr === undefined ? undefined : String(opts.pr),
     prUrl: opts['pr-url'] ?? null,
     tier: opts.tier ?? null,
     started: opts.started,
@@ -277,6 +279,16 @@ function cmdPr(opts) {
   return { record, marker: toMarker(record), ledger: ledgerFile(record.repo) };
 }
 
+// A phase before review (spec-feature, build-feature): how long it took and what it cost.
+function cmdPhase(opts) {
+  need(opts, 'repo', 'name', 'branch', 'started', 'scratch');
+  const base = baseRecord(opts, 'phase');
+  const tokens = countTokens({ scratch: opts.scratch, session: opts.session, started: base.started, ended: base.ended });
+  const record = { ...base, pr: typeof opts.pr === 'string' ? opts.pr : null, name: opts.name, branch: opts.branch, tokens: compactTokens(tokens) };
+  upsert(ledgerFile(record.repo), [record]);
+  return { record, ledger: ledgerFile(record.repo) };
+}
+
 function cmdImport(opts) {
   need(opts, 'repo', 'pr');
   const out = execFileSync(process.execPath, [PR_HOST, 'threads', String(opts.pr)], { cwd: opts.repo, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -299,6 +311,11 @@ export function aggregate(records, { since } = {}) {
   const recs = records.filter((r) => Date.parse(r.started) >= from);
   const rounds = recs.filter((r) => r.kind === 'round');
   const prs = recs.filter((r) => r.kind === 'pr');
+  const phases = {};
+  for (const p of recs.filter((r) => r.kind === 'phase')) {
+    const x = (phases[p.name] ??= { n: 0, minutes: [], tokens: [] });
+    x.n++; x.minutes.push(p.minutes); if (p.tokens?.source === 'transcript') x.tokens.push(p.tokens.weighted);
+  }
   const tiers = {};
   for (const r of rounds) {
     const t = (tiers[r.tier] ??= { prs: new Set(), finished: 0, rounds: 0, invalid: 0, minutes: [], tokens: [], prTokens: [], byIndex: {}, byScope: {}, lenses: {}, kept: 0, refuted: 0, fixed: 0, declined: 0, escalated: 0 });
@@ -341,13 +358,14 @@ export function aggregate(records, { since } = {}) {
     if (judged >= 20 && t.refuted / judged < 0.1) signals.push({ tier, kind: 'idle-skeptics', text: `skeptics refuted only ${pct(t.refuted, judged)} of ${judged} findings` });
     if (t.fixed + t.declined >= 10 && t.declined / (t.fixed + t.declined) > 0.4) signals.push({ tier, kind: 'declined-often', text: `the fixer declined ${pct(t.declined, t.fixed + t.declined)} of the findings it handled` });
   }
-  return { rounds: rounds.length, prs: prs.length, tiers, signals };
+  return { rounds: rounds.length, prs: prs.length, tiers, phases, signals };
 }
 
 function renderReport(agg, scopeLabel) {
   const lines = [`# PR review metrics · ${scopeLabel}`, '', `${agg.prs} PRs finished, ${agg.rounds} rounds recorded. Tokens are weighted input-token equivalents.`, ''];
-  if (!agg.rounds) return [...lines, 'No rounds recorded yet. babysit-pr records one per round from version 4.0.0 on; `import` reads markers from older PRs.'].join('\n');
-  lines.push('## Per tier', '', '| Tier | PRs | Rounds | Median min/round | Median tokens/round | Median tokens/PR | Kept | Refuted | Fixed | Declined | Decisions |', '|---|---|---|---|---|---|---|---|---|---|---|');
+  const hasPhases = Object.keys(agg.phases ?? {}).length > 0;
+  if (!agg.rounds && !hasPhases) return [...lines, 'No rounds recorded yet. babysit-pr records one per round from version 4.0.0 on; `import` reads markers from older PRs.'].join('\n');
+  if (agg.rounds) lines.push('## Per tier', '', '| Tier | PRs | Rounds | Median min/round | Median tokens/round | Median tokens/PR | Kept | Refuted | Fixed | Declined | Decisions |', '|---|---|---|---|---|---|---|---|---|---|---|');
   for (const [tier, t] of Object.entries(agg.tiers)) {
     lines.push(`| ${tier} | ${t.prs.size} | ${t.rounds}${t.invalid ? ` (+${t.invalid} failed)` : ''} | ${median(t.minutes) ?? '–'} | ${M(median(t.tokens))} | ${M(median(t.prTokens))} | ${t.kept} | ${t.refuted} | ${t.fixed} | ${t.declined} | ${t.escalated} |`);
   }
@@ -358,6 +376,10 @@ function renderReport(agg, scopeLabel) {
     for (const [s, x] of Object.entries(t.byScope)) lines.push(`| ${s} | ${x.n} | ${median(x.minutes) ?? '–'} | ${M(median(x.tokens))} |`);
     lines.push('', '| Lens | Rounds | Kept | Refuted | Kept per round |', '|---|---|---|---|---|');
     for (const [lens, l] of Object.entries(t.lenses).sort((a, b) => b[1].kept - a[1].kept)) lines.push(`| ${lens} | ${l.runs} | ${l.kept} | ${l.refuted} | ${(l.kept / l.runs).toFixed(2)} |`);
+  }
+  if (Object.keys(agg.phases ?? {}).length) {
+    lines.push('', '## Before review', '', '| Phase | Runs | Median min | Median tokens |', '|---|---|---|---|');
+    for (const [name, x] of Object.entries(agg.phases)) lines.push(`| ${name} | ${x.n} | ${median(x.minutes) ?? '–'} | ${M(median(x.tokens))} |`);
   }
   lines.push('', '## Signals', '');
   if (!agg.signals.length) lines.push('None yet: each signal needs at least 5 rounds or 10 to 20 findings behind it.');
@@ -381,6 +403,7 @@ function cmdReport(opts) {
 const COMMANDS = {
   round: cmdRound,
   pr: cmdPr,
+  phase: cmdPhase,
   import: cmdImport,
   report: cmdReport,
   tokens: (opts) => { need(opts, 'started'); return countTokens(opts); },
@@ -390,7 +413,7 @@ if (process.argv[1] && resolve(process.argv[1]).toLowerCase() === fileURLToPath(
   const opts = parseArgs(process.argv.slice(2));
   const command = COMMANDS[opts._[0]];
   if (!command) {
-    console.error('usage: measure.mjs round | pr | tokens | import | report  (see the header of this file)');
+    console.error('usage: measure.mjs round | pr | phase | tokens | import | report  (see the header of this file)');
     process.exit(2);
   }
   try {

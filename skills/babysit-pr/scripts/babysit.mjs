@@ -27,6 +27,7 @@ const SKILLS = join(HERE, '..', '..');
 const PR_HOST = join(SKILLS, 'pr-host', 'scripts', 'pr-host.mjs');
 const SIGNALS = join(SKILLS, 'score-pr', 'scripts', 'signals.mjs');
 const MEASURE = join(SKILLS, 'measure-prs', 'scripts', 'measure.mjs');
+const ACMAP = join(SKILLS, 'build-feature', 'scripts', 'acmap.mjs');
 const TIERS = JSON.parse(readFileSync(join(HERE, '..', 'references', 'tiers.json'), 'utf8'));
 
 const SEVERITIES = ['nit', 'minor', 'major', 'blocker'];
@@ -314,6 +315,34 @@ function profileNotes(repo, target) {
   }
 }
 
+// The spec this branch builds (spec-feature), found by its shape rather than its folder: a Markdown file
+// added or changed on the branch with front matter and `**AC<n>:**` lines. The reviewers judge against it.
+// Ambiguity or a failing map leaves the round without a spec and says why; it never stops the round.
+function findSpec(repo, target, mergeBase) {
+  const changed = (tryGit(repo, ['diff', '--name-status', '--diff-filter=AM', mergeBase, 'HEAD', '--', '*.md']) ?? '')
+    .split('\n').filter(Boolean).map((line) => { const [status, path] = line.split('\t'); return { status, path }; });
+  const specs = changed.filter(({ path }) => {
+    const text = tryGit(repo, ['show', `HEAD:${path}`]) ?? '';
+    return /^---\r?\n[\s\S]*?\btitle:[\s\S]*?\r?\n---/.test(text) && /^\s*[-*]\s*\*\*AC\d+:\*\*/m.test(text);
+  });
+  const added = specs.filter((f) => f.status === 'A');
+  const pick = added.length === 1 ? added[0] : specs.length === 1 ? specs[0] : null;
+  if (!pick) return { spec: null, specWarning: specs.length > 1 ? `${specs.length} specs changed on this branch (${specs.map((f) => f.path).join(', ')}); reviewing without one` : null };
+  let out;
+  try {
+    out = execFileSync(process.execPath, [ACMAP, '--spec', pick.path, '--base', target, '--repo', repo], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch (error) {
+    out = error.stdout?.toString(); // acmap exits 1 when an AC is uncovered; its map is still on stdout
+  }
+  try {
+    const map = JSON.parse(out);
+    const acs = map.acs.filter((a) => !a.dropped).map(({ id, statement, verifiedBy }) => ({ id, statement, verifiedBy }));
+    return { spec: { path: pick.path, title: map.title, acs, missingTests: map.missingTests, missingCommits: map.missingCommits }, specWarning: null };
+  } catch {
+    return { spec: null, specWarning: `could not map the acceptance criteria of ${pick.path}; reviewing without the spec` };
+  }
+}
+
 function cmdArgs(opts) {
   need(opts, 'pr', 'repo', 'target', 'scratch');
   const { show, threads } = readPr(opts);
@@ -341,6 +370,8 @@ function cmdArgs(opts) {
     signals = { hitIds: (s.hits ?? []).filter((h) => h.applies?.length).map((h) => h.id), reasons: [...(s.bounds?.floorReasons ?? []), ...(s.bounds?.capReasons ?? []), ...(s.bounds?.adjustReasons ?? [])], destructive: s.destructive ?? [] };
   } catch { /* no signals: the reviewers go without */ }
 
+  const { spec, specWarning } = findSpec(opts.repo, opts.target, mergeBase);
+
   const args = {
     round,
     tierName,
@@ -350,6 +381,7 @@ function cmdArgs(opts) {
     repo: { worktree: resolve(opts.repo).replace(/\\/g, '/'), mergeBase, headSha, sinceSha },
     signals,
     profileNotes: profileNotes(opts.repo, opts.target),
+    ...(spec ? { spec } : {}),
     prior: a.findings.map((f) => ({ key: f.id, severity: f.severity, file: f.file, line: f.line, title: f.title, resolution: `${f.status}${f.lastReply ? `: ${f.lastReply}` : ''}` })),
     human: a.human.map((t) => ({ threadId: t.id, author: t.comments[0].author, file: t.file, line: t.line, conversation: t.comments.map((c) => `${c.author}: ${c.content.replace(/<!--[\s\S]*?-->/g, '').trim()}`).join('\n---\n') })),
     scratch: join(opts.scratch, `round-${round}`).replace(/\\/g, '/'),
@@ -358,7 +390,7 @@ function cmdArgs(opts) {
   mkdirSync(opts.scratch, { recursive: true });
   const file = join(opts.scratch, `round-${round}-args.json`);
   writeFileSync(file, JSON.stringify({ ...args, _babysit: meta }, null, 2));
-  return { file, round, tier: tierName, scope, scopeWhy: why, sinceSha, headSha, human: args.human.length, prior: args.prior.length, next };
+  return { file, round, tier: tierName, scope, scopeWhy: why, sinceSha, headSha, human: args.human.length, prior: args.prior.length, spec: spec ? { path: spec.path, acs: spec.acs.length, missingTests: spec.missingTests } : null, specWarning, next };
 }
 
 // ---------------------------------------------------------------------------------------------

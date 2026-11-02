@@ -47,9 +47,9 @@ its SKILL.md lists the few differences.
 
 ## 0. Set up
 
-1. **PR.** From the argument, or `<pr-host> find --branch <current branch>`. On `local` (`<pr-host> context`
-   says so) with no review yet, start one: `<pr-host> open --source <branch> [--target <branch>]`.
-   `<pr-host> show <pr>` must say `status: active`.
+1. **PR.** From the argument, or `<pr-host> find --branch <current branch>`. No PR yet for a pushed branch:
+   open one as a draft, `<pr-host> open --source <branch> [--target <branch>] --title <title> --draft` (on
+   `local` this starts a review). `<pr-host> show <pr>` must say `status: active`.
 2. **Mode.** `isMine: true` → owner mode: review, fix, push, resolve, report, merge. Otherwise
    **review-only**: review and post findings, never push to someone else's branch, never change their
    description or thread statuses; the report goes into the report thread only.

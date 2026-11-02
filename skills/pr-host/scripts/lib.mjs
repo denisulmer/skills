@@ -213,6 +213,26 @@ export async function watchLoop(prId, intervalSeconds, snapshot) {
   }
 }
 
+// `open` on a host with PRs: the branch's open PR when it has one (rerunning is safe), else a new one. The
+// host supplies how it finds its open PRs and default branch, and how it creates one (null under a rehearsal).
+export async function openPr(c, opts, { host, limit, find, defaultBranch, create }) {
+  if (typeof opts.source !== 'string' || !opts.source.trim()) throw new UsageError('open needs --source <branch>');
+  const branch = (name) => name.replace(/^refs\/heads\//, '');
+  const source = branch(opts.source);
+  const existing = (await find(source))[0];
+  if (existing) return { existing: true, ...existing };
+  const description = typeof opts.body === 'string' || typeof opts['body-file'] === 'string' ? readBody(opts) : '';
+  if (description.length > limit) {
+    throw new UsageError(`description is ${description.length} characters; ${host} keeps at most ${limit}. Shorten it and move detail into a thread.`);
+  }
+  const target = branch(typeof opts.target === 'string' ? opts.target : await defaultBranch());
+  const title = typeof opts.title === 'string' ? opts.title : source;
+  const draft = opts.draft === true;
+  const created = await create({ source, target, title, description, draft });
+  if (!created) return { existing: false, dryRun: true, title, sourceBranch: source, targetBranch: target, isDraft: draft };
+  return { existing: false, ...created, sourceBranch: source, targetBranch: target };
+}
+
 // The state keys every adapter's snapshot uses, so watch lines read the same everywhere.
 export function watchState({ status, mergeStatus, autoMerge, isDraft, reviewers }, checks) {
   return {

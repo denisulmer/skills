@@ -2,6 +2,28 @@
 
 Each `## <version>` section becomes the notes of the GitHub release `v<version>`. Newest first.
 
+## 4.2.0
+
+The pipeline now starts at the idea: `spec-feature` turns it into an approved spec, `build-feature` builds it
+and opens the PR, and babysit-pr reviews it against the spec. Nothing to do but update.
+
+- **`spec-feature`** (new): a conversation, one question at a time, until no point is open. It writes
+  `docs/specs/<date>-<slug>.md` on a new `feature/<slug>` branch: numbered acceptance criteria that each
+  say how they are verified, non-goals, your decisions (one-way doors always asked and signed), a plan, and
+  a risk forecast from the planned files. From medium tier up, a skeptic checks the spec first. Only your
+  yes in chat approves it; then the chain runs on its own to babysit-pr's merge question.
+- **`build-feature`** (new): one builder agent builds the spec AC by AC (failing test with the AC's id,
+  pass, checks, one commit per AC with `Refs: spec <slug> AC<n>`). `acmap.mjs` checks every AC has its
+  commit (that exact trailer) and a test carrying its id (JS/TS, C#, Java, Go, Python, Ruby, Rust), the checks run again on the head, and spec problems come to you as amendments. Then it
+  opens a draft PR and starts babysit-pr.
+- **Review against the spec:** babysit-pr finds the spec on the branch (by its shape, wherever it lives)
+  and gives the reviewers that judge against it its ACs and the ones no test covers yet. The spec links its
+  PR; once merged, it has shipped.
+- **`pr-host open`** now opens a PR on GitHub, GitLab and Azure DevOps too (draft, title, description,
+  default target), and returns the open PR for the branch instead of opening a second one.
+- `signals.mjs --planned <file>` forecasts the risk of files a plan expects to touch. `measure-prs` records
+  the spec and build phases and reports them under "Before review".
+
 ## 4.1.0
 
 The steps that need no judgment are scripts now, so a run does them the same way every time: the risk

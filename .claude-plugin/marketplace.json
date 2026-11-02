@@ -11,8 +11,8 @@
     {
       "name": "denisulmer-skills",
       "source": "./",
-      "description": "Pull requests from review to merge on GitHub, GitLab, Azure DevOps or plain git: a 0-100 risk score, tiered review rounds with fixes recorded as PR threads, a watched merge, metrics that show what reviews cost and find, and a setup skill that teaches them each repository.",
-      "version": "4.1.0",
+      "description": "From feature idea to merged code on GitHub, GitLab, Azure DevOps or plain git: an approved spec with testable acceptance criteria, a build AC by AC, a 0-100 risk score, tiered review rounds with fixes recorded as PR threads, a watched merge, metrics that show what reviews cost and find, and a setup skill that teaches them each repository.",
+      "version": "4.2.0",
       "author": {
         "name": "Denis Ulmer"
       },
@@ -22,6 +22,8 @@
       "keywords": ["pull-request", "code-review", "merge", "github", "gitlab", "azure-devops"],
       "strict": false,
       "skills": [
+        "./skills/spec-feature",
+        "./skills/build-feature",
         "./skills/setup-repo",
         "./skills/pr-host",
         "./skills/score-pr",

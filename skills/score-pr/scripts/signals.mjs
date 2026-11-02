@@ -5,6 +5,9 @@
 //
 //   node signals.mjs --base <ref> --head <ref> [--repo <path>] [--profile <file>|none]
 //   node signals.mjs --which-profile --base <ref> [--repo <path>]   the profile that applies, with its text
+//   node signals.mjs --planned <file> --base <ref> [--repo <path>]  a forecast for files a plan expects to
+//                                                                   touch (one path per line, `+ ` new, `- ` deleted; no line counts,
+//                                                                   no destructive-statement scan)
 //
 // Profiles, first match wins: --profile <file>; ~/.claude/pr-profiles/*.md whose `remotes` matches a remote
 // URL or whose `paths` names the main checkout (so every worktree of a repo finds the same one); the
@@ -15,6 +18,7 @@
 // a cap or an adjustment applies only when EVERY changed file matches (a discount must not
 // cover a change that also reaches somewhere else).
 
+import { readFileSync } from 'node:fs';
 import { changedFiles, fileMatcher, git, loadProfile, parseArgs, TEST_FILE } from '../../setup-repo/scripts/profile.mjs';
 
 // Defaults that hold in most repositories. A profile adds rules, and replaces a default by reusing its id.
@@ -42,6 +46,16 @@ function compileRule(rule, source) {
   return { ...rule, source, matches: fileMatcher(rule) };
 }
 
+// A plan has no diff yet: one path per line, `+ ` before a new file and `- ` before one to delete (else
+// modified), with no line counts. Windows separators and a leading ./ are normalized, so rules match.
+function readPlanned(file) {
+  return readFileSync(file, 'utf8').split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((line) => {
+    const status = line.startsWith('+ ') ? 'A' : line.startsWith('- ') ? 'D' : 'M';
+    const path = (status === 'M' ? line : line.slice(2)).trim().replace(/\\/g, '/').replace(/^\.\//, '');
+    return { path, added: 0, deleted: 0, binary: false, status };
+  });
+}
+
 function main() {
   const opts = parseArgs(process.argv.slice(2));
   const repo = typeof opts.repo === 'string' ? opts.repo : '.';
@@ -50,11 +64,14 @@ function main() {
     console.log(JSON.stringify(profile ? { name: profile.name, source: profile.source, file: profile.file, text: profile.text } : null, null, 2));
     return;
   }
-  if (typeof opts.base !== 'string' || typeof opts.head !== 'string') {
-    console.error('usage: node signals.mjs --base <ref> --head <ref> [--repo <path>] [--profile <file>|none]\n       node signals.mjs --which-profile --base <ref> [--repo <path>]');
+  const planned = typeof opts.planned === 'string';
+  if (typeof opts.base !== 'string' || (typeof opts.head !== 'string' && !planned)) {
+    console.error('usage: node signals.mjs --base <ref> --head <ref> [--repo <path>] [--profile <file>|none]\n       node signals.mjs --planned <file> --base <ref> [--repo <path>]\n       node signals.mjs --which-profile --base <ref> [--repo <path>]');
     process.exit(2);
   }
-  const { mergeBase, range, files } = changedFiles(repo, opts.base, opts.head);
+  const { mergeBase, range, files } = planned
+    ? { mergeBase: null, range: null, files: readPlanned(opts.planned) }
+    : changedFiles(repo, opts.base, opts.head);
   const changed = files;
   if (changed.length === 0) {
     console.log(JSON.stringify({ base: opts.base, head: opts.head, mergeBase, empty: true }, null, 2));
@@ -95,7 +112,7 @@ function main() {
   // Destructive statements in added lines of migration-like files.
   const migrationRule = rules.find((r) => r.id === 'migration');
   const destructive = [];
-  for (const file of changed.filter((f) => migrationRule.matches(f.path) && f.status !== 'D')) {
+  for (const file of planned ? [] : changed.filter((f) => migrationRule.matches(f.path) && f.status !== 'D')) {
     const diff = git(repo, ['diff', '-U0', ...range, '--', file.path]);
     let lineNo = 0;
     for (const line of diff.split('\n')) {
@@ -127,7 +144,8 @@ function main() {
 
   console.log(JSON.stringify({
     base: opts.base,
-    head: opts.head,
+    head: planned ? null : opts.head,
+    ...(planned ? { planned: true } : {}),
     mergeBase,
     profile: profile ? { name: profile.name, source: profile.source, file: profile.file } : null,
     totals: {

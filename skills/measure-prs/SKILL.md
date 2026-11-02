@@ -7,7 +7,8 @@ description: Measure what babysit-pr runs cost and what they found - tokens, wal
 
 `<measure>` = `node <base>/scripts/measure.mjs`. Read its header for every flag.
 
-babysit-pr records one line per review round and one per PR into a ledger per repository,
+babysit-pr records one line per review round and one per PR, and spec-feature and build-feature one per
+phase (spec, build), into a ledger per repository,
 `<config>/pr-metrics/<repo>.jsonl` (`<config>` = `$CLAUDE_CONFIG_DIR` or `~/.claude`), and leaves the same
 record as a hidden `<!-- pr-metrics … -->` marker on the PR. Tokens are counted from this machine's
 session transcripts and recorded as weighted input-token equivalents (cache writes 1.25×, cache reads

@@ -9,7 +9,7 @@
 
 import { execFileSync } from 'node:child_process';
 import {
-  RESOLVED_STATUSES, UsageError, checkStatus, deriveStatus, enc, lineRange, normalizeStrategy, optionalStatus,
+  RESOLVED_STATUSES, UsageError, openPr, checkStatus, deriveStatus, enc, lineRange, normalizeStrategy, optionalStatus,
   peopleComments, readBody, readMarker, request, requirePr, sleep, watchLoop, watchState, withMarker,
 } from '../lib.mjs';
 
@@ -444,6 +444,20 @@ export const commands = {
     const branch = opts.branch.replace(/^refs\/heads\//, '');
     const pulls = await paged(c, `/pulls?state=open&head=${enc(branch.includes(':') ? branch : `${c.owner}:${branch}`)}`);
     return pulls.map((pr) => ({ id: pr.number, title: pr.title, isDraft: !!pr.draft, webUrl: pr.html_url }));
+  },
+
+
+  async open(c, _pos, opts) {
+    return openPr(c, opts, {
+      host: 'GitHub',
+      limit: DESCRIPTION_LIMIT,
+      find: (branch) => commands.find(c, [], { branch }),
+      defaultBranch: async () => (await gh(c, 'GET', '')).default_branch,
+      create: async ({ source, target, title, description, draft }) => {
+        const pr = await gh(c, 'POST', '/pulls', { title, head: source, base: target, body: description, draft });
+        return pr.dryRun ? null : { id: pr.number, title: pr.title, isDraft: !!pr.draft, webUrl: pr.html_url };
+      },
+    });
   },
 
   async show(c) {

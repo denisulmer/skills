@@ -16,6 +16,8 @@ export const meta = {
 //   repo: { worktree, mergeBase, headSha, sinceSha },   sinceSha = head reviewed last round, or null
 //   signals: { hitIds: [...], reasons: [...], destructive: [...] },
 //   profileNotes,                               judgment notes and conventions from the repo profile, or ''
+//   spec: { path, title, acs: [{ id, statement, verifiedBy }], missingTests, missingCommits },   when the
+//                                               branch adds a spec (spec-feature); otherwise absent
 //   prior: [{ key, severity, file, line, title, resolution }],
 //   human: [{ threadId, author, file, line, conversation }],
 //   scratch                                     a directory reviewers may write repro files under
@@ -100,7 +102,7 @@ const LENSES = {
   correctness:
     'Trace every changed function. Feed it the inputs that break code: null, empty, duplicates, boundaries, concurrent calls, time zones and clock changes, partial failure. Follow its error paths. Find every caller of a changed signature or behaviour (search for them) and check each still holds. Judge behaviour against the intent, not against the code\'s own comments.',
   'standards-spec':
-    'Answer two questions and keep them apart. Standards: does the change follow the rules this repository writes down (the AGENTS.md and CLAUDE.md nearest each changed file, the domain vocabulary in CONTEXT.md, the ADRs the change touches)? Cite the rule for each finding. Spec: does it do what the intent and any linked work item ask - is anything missing, anything added that nobody asked for, anything implemented wrongly? Quote the intent for each finding.',
+    'Answer two questions and keep them apart. Standards: does the change follow the rules this repository writes down (the AGENTS.md and CLAUDE.md nearest each changed file, the domain vocabulary in CONTEXT.md, the ADRs the change touches)? Cite the rule for each finding. Spec: does it do what the intent, the specification (when there is one) and any linked work item ask - is every acceptance criterion met and its test real, is anything missing, anything added that nobody asked for, anything implemented wrongly, any decision ignored? Quote the intent or the AC for each finding.',
   'blast-radius':
     'Find what this change breaks outside the diff. Listing callers is not the job; find what a search will not show you: serialized and wire formats, database columns and migrations, generated clients, configuration and feature flags, other services or languages reading the same data, and deploy order (the previous release running against the new schema, or the new code against the old). Name the one fact the change is safe because of, then try to prove or disprove it by running something.',
   tests:
@@ -119,7 +121,7 @@ const SKEPTICS = [
   'Is it already handled? Look for a guard upstream, a framework default, a test, or a constraint that makes the failure impossible, and check whether it repeats an earlier finding that was declined for a reason that still holds. If so, it is refuted.',
 ]
 
-const { round, tierName, tier, scope = 'full', pr, repo, signals, profileNotes = '', prior = [], human = [], scratch } = args
+const { round, tierName, tier, scope = 'full', pr, repo, signals, profileNotes = '', prior = [], human = [], scratch, spec = null } = args
 const delta = scope === 'delta' && Boolean(repo.sinceSha)
 
 // Only these lenses build or run tests; every other reviewer and every skeptic only reads.
@@ -159,10 +161,24 @@ function scopeText() {
   ].join('\n\n')
 }
 
-function context(label, portion, canRun = false) {
+// Only the lenses that judge the change against its spec get the acceptance criteria in their prompt; the
+// rest get the path, to read when a finding depends on what the change must do.
+const SPEC_LENSES = new Set(['standards-spec', 'generalist', 'tests'])
+
+function specText(full) {
+  if (!spec) return ''
+  const where = `Specification: ${repo.worktree}/${spec.path} ("${spec.title}").`
+  if (!full) return `${where} Read it when a finding depends on what the change must do.`
+  const acs = spec.acs.map((a) => `${a.id} ${a.statement.replace(/\.$/, '')}`).join('; ')
+  const missing = spec.missingTests.length ? ` No test carries the id of: ${spec.missingTests.join(', ')}.` : ''
+  return `${where} Its acceptance criteria and decisions are what the change must do: ${acs}.${missing}`
+}
+
+function context(label, portion, canRun = false, fullSpec = false) {
   return [
     `Pull request !${pr.id} "${pr.title}" (${pr.webUrl}), review round ${round}, ${tierName} tier (risk ${pr.score}/100).`,
     `Intent: ${pr.intent}`,
+    specText(fullSpec),
     `Code: ${repo.worktree} is checked out at the PR head ${repo.headSha}.`,
     scopeText(),
     portion
@@ -245,7 +261,7 @@ const humanPrompt = (h) =>
 
 agentsStarted += tasks.length + human.length
 const [reviews, humanVerdicts] = await Promise.all([
-  parallel(tasks.map((t) => () => agent(`${LENSES[t.lens]}\n\n${context(t.label, t.portion, RUNNING_LENSES.has(t.lens))}`, { label: `review:${t.label}`, phase: 'Review', schema: FINDINGS, ...modelOpt(t.model), effort: tier.effort }))),
+  parallel(tasks.map((t) => () => agent(`${LENSES[t.lens]}\n\n${context(t.label, t.portion, RUNNING_LENSES.has(t.lens), SPEC_LENSES.has(t.lens))}`, { label: `review:${t.label}`, phase: 'Review', schema: FINDINGS, ...modelOpt(t.model), effort: tier.effort }))),
   parallel(human.map((h) => () => agent(humanPrompt(h), { label: `comment:${h.threadId}`, phase: 'Verify', schema: HUMAN_VERDICT, ...modelOpt(tier.model), effort: tier.effort }))),
 ])
 

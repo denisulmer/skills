@@ -40,7 +40,7 @@ JSON, except `watch`. `show` gives `platform`; branch on it only where the table
 | Merge once checks pass / stop that | `auto-merge <pr> [--strategy merge]` / `cancel-auto-merge <pr>` |
 | Merge now | `merge <pr> [--strategy merge]` |
 | Wait for changes (Monitor) | `watch <pr> --interval 60` |
-| Start a review (`local` only) | `open --source <branch> [--target <branch>]` |
+| Open a PR (on `local`: start a review) | `open --source <branch> [--target <branch>] [--title T] [--body-file F] [--draft]` |
 
 Write bodies to a file in the scratchpad and pass `--body-file`: Markdown with backticks, pipes and
 newlines survives a file and rarely survives shell quoting.

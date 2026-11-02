@@ -36,7 +36,7 @@ const USAGE = `pr-host <command> [args]
                                        merge now
   watch <pr> [--interval SECONDS]      poll and print one line per change; exits when the PR is no longer active
   open --source <branch> [--target <branch>] [--title T] [--body-file F] [--draft]
-                                       local only: start a review of a branch (other hosts: open the PR there)
+                                       open a PR for a pushed branch (local: start a review); returns the open one if it exists
 
   <pr> is a pull-request id or URL. --body-file - reads stdin; --body "text" passes text inline.
   --key makes a create or reply idempotent: a thread or comment that already carries the key is returned, not posted again.

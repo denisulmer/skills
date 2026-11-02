@@ -6,6 +6,8 @@ My own Claude Code skills. I write them myself so I know what each one does.
 
 | Skill | What it does |
 |---|---|
+| [spec-feature](skills/spec-feature/SKILL.md) | Turns a feature idea into an approved spec through a conversation: testable acceptance criteria, your decisions, a plan and a risk forecast |
+| [build-feature](skills/build-feature/SKILL.md) | Builds an approved spec AC by AC (failing test, pass, one commit each), checks every AC is covered, opens a draft PR |
 | [setup-repo](skills/setup-repo/SKILL.md) | Sets a repository up: platform, sign-in, and a calibrated repository profile |
 | [pr-host](skills/pr-host/SKILL.md) | One command line for pull requests on GitHub, GitLab, Azure DevOps or plain git: threads, description, checks, failed logs, auto-merge, watch |
 | [score-pr](skills/score-pr/SKILL.md) | Scores a PR 0-100 from blast radius and one-way/two-way door, names the review tier |
@@ -13,8 +15,10 @@ My own Claude Code skills. I write them myself so I know what each one does.
 | [merge-pr](skills/merge-pr/SKILL.md) | Merges a PR and watches it land: auto-merge, failed builds, conflicts, approvals, cleanup |
 | [measure-prs](skills/measure-prs/SKILL.md) | Shows what the reviews cost and found, per tier, round and lens, and proposes tier changes backed by the numbers |
 
-They ship together as the `denisulmer-skills` plugin, because they call each other: `babysit-pr` calls `score-pr`,
-then runs `skills/babysit-pr/workflows/review-round.js` once per round, then `merge-pr`. All of them post
+They ship together as the `denisulmer-skills` plugin, because they call each other. From an idea to merged
+code: `spec-feature` → (your approval) → `build-feature` → `babysit-pr` → (your "merge") → `merge-pr`, and you
+are asked only at decisions. `babysit-pr` calls `score-pr`, then runs
+`skills/babysit-pr/workflows/review-round.js` once per round, then `merge-pr`. All of them post
 and read through `pr-host`. Every round and PR leaves a metrics record (a local ledger in
 `~/.claude/pr-metrics/` and a hidden marker on the PR) that `measure-prs` reports on. The review tiers live in `skills/babysit-pr/references/tiers.json`. Nothing
 outside this repository is needed besides Node 18+, git 2.38+ and the host's sign-in.
@@ -59,14 +63,16 @@ from the PR's target branch so a PR cannot loosen its own rules) or just for you
 
 ```
 /denisulmer-skills:setup-repo
+/denisulmer-skills:spec-feature "suppliers' API keys should expire after 90 days"
+/denisulmer-skills:build-feature docs/specs/2026-11-02-supplier-key-expiry.md
 /denisulmer-skills:score-pr https://github.com/<owner>/<repo>/pull/123
 /denisulmer-skills:babysit-pr 123
 /denisulmer-skills:merge-pr 123
 /denisulmer-skills:measure-prs
 ```
 
-Start `babysit-pr` in a session of its own: it runs for a while and waits for you at decisions and at the
-merge.
+Start `spec-feature` or `babysit-pr` in a session of its own: they run for a while and wait for you at
+decisions, at the spec approval and at the merge.
 
 ## Develop
 
