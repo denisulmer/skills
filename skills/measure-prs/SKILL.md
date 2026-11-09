@@ -11,8 +11,9 @@ babysit-pr records one line per review round and one per PR, and spec-feature an
 phase (spec, build), into a ledger per repository,
 `<config>/pr-metrics/<repo>.jsonl` (`<config>` = `$CLAUDE_CONFIG_DIR` or `~/.claude`), and leaves the same
 record as a hidden `<!-- pr-metrics … -->` marker on the PR. Tokens are counted from this machine's
-session transcripts and recorded as weighted input-token equivalents (cache writes 1.25×, cache reads
-0.1×, output 5×): good for comparing runs, not a bill. A record whose transcript could not be read says
+session transcripts and recorded twice: as weighted input-token equivalents (cache writes 1.25×, cache
+reads 0.1×, output 5×), and as `usd`, the same usage at each model's API list price, which is the figure
+to compare when tiers use different models. Both are good for comparing runs; neither is a bill. A record whose transcript could not be read says
 `tokens.source: unknown`.
 
 ## Steps
@@ -42,6 +43,11 @@ session transcripts and recorded as weighted input-token equivalents (cache writ
      `followUpLenses`, `skeptics` and their models, effort, `severityBar`, `maxRounds`.
    - **The repository profile** (the setup-repo skill edits it): danger-map floors and caps when a
      tier's PRs keep coming back clean or keep failing, checks, conventions.
+   A proposal that changes a tier's model or effort follows the ladder in tiers.json: make sure the
+   agent can check its own work first, then raise effort one level, and past `high` take the next model
+   up at a lower effort. Compare by the report's $ per round, which prices each model, not by tokens, and
+   keep a second model in a tier only while it finds what the first does not.
+
    Recommend at most three, strongest evidence first. Change nothing yourself: the user decides, and a
    change to the skills repository is a release.
 

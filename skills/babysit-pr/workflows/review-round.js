@@ -248,7 +248,7 @@ let portions = null
 if (!delta && tier.portionLenses.length > 0) {
   const mapped = await agent(
     `Split pull request !${pr.id} "${pr.title}" into review portions along its seams (a module, a layer, a feature slice) so that one reviewer can hold a whole portion in mind. Every changed file belongs to exactly one portion. Use two to six portions; a small change may be one. For each, give a name, its files, and what a reviewer should look at hardest there.\n\nIntent: ${pr.intent}\nChanged files: git -C "${repo.worktree}" diff --stat ${repo.mergeBase}..${repo.headSha}\nDo not modify anything.`,
-    { label: 'map', phase: 'Map', schema: PORTIONS, model: 'sonnet', effort: 'medium' },
+    { label: 'map', phase: 'Map', schema: PORTIONS, model: 'haiku', effort: 'medium' },
   )
   agentsStarted += 1
   portions = mapped?.portions?.length ? mapped.portions.slice(0, 6) : null
@@ -333,6 +333,7 @@ const findingText = (f) => `[${f.severity}] ${f.file}:${f.line}${f.endLine ? `-$
 
 // Reviewers work alone, so one defect comes back several times, at other lines and in other words, where
 // the merge above cannot see it. One reader groups the reports by cause; each group becomes one finding.
+// It runs on Sonnet, not the smallest model: a wrong group loses a finding, and nothing after it checks.
 if (tasks.length > 1 && findings.length > 1) {
   agentsStarted += 1
   const grouped = await agent(

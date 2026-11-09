@@ -70,7 +70,8 @@ expires until the PR is finished. Each line is an event:
 - Infrastructure trouble (runner lost, timeout without a test failure, package feed or network errors):
   `rerun-check <pr> <checkId>` once per check. A second infrastructure failure → tell the user.
 - A real failure: fix it with babysit-pr's fixer brief (`<base>/../babysit-pr/references/fixer.md`) and
-  its autonomy line. For a PR triaged medium or above (its `pr-babysit:triage` thread), run one
+  its autonomy line, on the model and effort of the PR's tier (babysit-pr's rounds.md §3; an untriaged PR
+  counts as medium). For a PR triaged medium or above (its `pr-babysit:triage` thread), run one
   babysit-pr review round over the fix before pushing: `scope: "delta"`, `sinceSha` = the head before the
   fix (babysit-pr's rounds.md §1). Push with `git -C <wt> push origin HEAD:refs/heads/<source>`;
   the push restarts the checks and auto-merge stays set. Record it as a thread

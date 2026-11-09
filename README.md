@@ -72,7 +72,10 @@ from the PR's target branch so a PR cannot loosen its own rules) or just for you
 ```
 
 Start `spec-feature` or `babysit-pr` in a session of its own: they run for a while and wait for you at
-decisions, at the spec approval and at the merge.
+decisions, at the spec approval and at the merge. The session only conducts, so Claude Code's default
+(Opus at medium effort) is enough for it: each tier names the model and effort of its reviewers, skeptics,
+fixer and builder in `tiers.json`, from Sonnet at medium for a trivial change to Opus at high plus a Fable
+adversary for a critical one.
 
 ## Develop
 

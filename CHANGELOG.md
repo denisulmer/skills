@@ -2,6 +2,30 @@
 
 Each `## <version>` section becomes the notes of the GitHub release `v<version>`. Newest first.
 
+## 4.5.0
+
+Every agent now runs on the model and effort that fit its task, following
+[Anthropic's model guidance](https://claude.dev/blog/which-claude-model-should-you-build-with/): effort is
+raised before the model, nothing runs past `high`, and the metrics price each model. Nothing to do but
+update.
+
+- **One ladder across the tiers:** trivial runs on Sonnet at medium, low on Sonnet at high, medium on Opus
+  at medium, high on Opus at high, and critical on Opus at high plus a Fable adversary. Before, low used
+  the session's model, medium ran Opus at high and critical ran Opus at xhigh.
+- **Nothing runs at xhigh any more.** Critical reviewers and the fixers of high and critical PRs did. The
+  guidance puts one level past `high` at about 2.5 times the cost for a small gain, and says to take the
+  next model up at a lower effort instead, which is what critical's Fable adversary is.
+- **The fixer, build-feature's builder and spec-feature's skeptic run on their tier's model and effort**,
+  not on the session's model. A fix that fails its checks goes back one effort level higher, never above
+  `high`.
+- Splitting a PR into parts runs on Haiku.
+- **The session only conducts**, so Claude Code's default (Opus at medium) is enough for it, whatever the
+  tier.
+- **`measure-prs` reports dollars.** Each round records its usage at API list prices per model (`usd`,
+  `usdByModel`) and the report shows the median $ per round, so tiers on different models compare.
+  Proposals to change a model or an effort follow the same ladder.
+- `tiers.json`: `fixerEffort` is gone, and `model` is never empty.
+
 ## 4.4.0
 
 Reviews cost far less and interrupt you less: reports of one defect become one finding, each finding is

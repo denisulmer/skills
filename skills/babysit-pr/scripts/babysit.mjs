@@ -677,7 +677,7 @@ export function summaryBody({ n, args, result, findings, show, fixers, choices, 
   const merged = result.coverage?.duplicatesMerged ?? 0;
   const skepticCount = result.coverage?.skeptics ?? 0;
   const skeptics = `${merged ? ` · ${merged} duplicate report${merged === 1 ? '' : 's'} merged` : ''}${skepticCount ? ` · every finding checked by a skeptic (${skepticCount})` : ''}`;
-  lines.push('', `_Reviewed ${reviewed} · ${reviewers.length} reviewer${reviewers.length === 1 ? '' : 's'}${reviewers.length ? ` (${lensText(reviewers)})` : ''} · ${t.model ?? 'session model'} ${t.effort}${skeptics}_`);
+  lines.push('', `_Reviewed ${reviewed} · ${reviewers.length} reviewer${reviewers.length === 1 ? '' : 's'}${reviewers.length ? ` (${lensText(reviewers)})` : ''} · ${t.model} ${t.effort}${skeptics}_`);
   return { body: lines.join('\n'), clean };
 }
 

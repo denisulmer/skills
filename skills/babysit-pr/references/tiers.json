@@ -1,5 +1,5 @@
 {
-  "_readme": "One entry per risk tier. babysit-pr passes the tier's entry to workflows/review-round.js as args.tier. model null = inherit the session model. Round 1 is a full round: portionLenses run once per part of the change, wholeLenses once over all of it (it also runs again in full after the tier rose or someone else pushed). A follow-up round reviews only the commits since the last round, with followUpLenses. skeptics = every finding is checked by a skeptic before it is posted: major and blocker findings in batches on the tier's model, minor ones in batches on skepticModel, and a blocker by a second skeptic on secondModel. severityBar = the lowest severity that makes a full round unclean; a follow-up round is unclean only on a major or blocker finding. The review is done after a clean round, or when nothing changed since an unclean one; an unclean round is followed by a follow-up round, up to maxRounds. Lens names are defined in workflows/review-round.js.",
+  "_readme": "One entry per risk tier. babysit-pr passes the tier's entry to workflows/review-round.js as args.tier. model and effort: every agent that judges or changes code for a tier runs on the tier's model at the tier's effort: its reviewers, the skeptics of its major findings, the fixer, and for a spec forecast at that tier build-feature's builder and spec-feature's skeptic. The tiers are one ladder (Anthropic's model guidance): raise effort before the model, never past high, and start the next model up at a lower effort; nothing runs at xhigh or max, where a level costs as much as a bigger model. secondModel adds a second adversary, and the second skeptic of a blocker, on the next model up. skepticModel checks minor findings. Round 1 is a full round: portionLenses run once per part of the change, wholeLenses once over all of it (it also runs again in full after the tier rose or someone else pushed). A follow-up round reviews only the commits since the last round, with followUpLenses. skeptics = every finding is checked by a skeptic before it is posted: major and blocker findings in batches on the tier's model, minor ones in batches on skepticModel, and a blocker by a second skeptic on secondModel. severityBar = the lowest severity that makes a full round unclean; a follow-up round is unclean only on a major or blocker finding. The review is done after a clean round, or when nothing changed since an unclean one; an unclean round is followed by a follow-up round, up to maxRounds. Lens names are defined in workflows/review-round.js.",
   "bands": { "trivial": [0, 15], "low": [16, 35], "medium": [36, 60], "high": [61, 80], "critical": [81, 100] },
   "tiers": {
     "trivial": {
@@ -14,7 +14,6 @@
       "skepticModel": "sonnet",
       "severityBar": "major",
       "maxRounds": 1,
-      "fixerEffort": "medium",
       "grillEveryOneWayFix": false,
       "extras": []
     },
@@ -23,14 +22,13 @@
       "wholeLenses": ["correctness", "standards-spec"],
       "conditionalLenses": false,
       "followUpLenses": ["fixes"],
-      "model": null,
+      "model": "sonnet",
       "effort": "high",
       "secondModel": null,
       "skeptics": false,
       "skepticModel": "sonnet",
       "severityBar": "major",
       "maxRounds": 2,
-      "fixerEffort": "high",
       "grillEveryOneWayFix": false,
       "extras": []
     },
@@ -40,13 +38,12 @@
       "conditionalLenses": true,
       "followUpLenses": ["fixes"],
       "model": "opus",
-      "effort": "high",
+      "effort": "medium",
       "secondModel": null,
       "skeptics": true,
       "skepticModel": "sonnet",
       "severityBar": "major",
       "maxRounds": 3,
-      "fixerEffort": "high",
       "grillEveryOneWayFix": false,
       "extras": []
     },
@@ -62,7 +59,6 @@
       "skepticModel": "sonnet",
       "severityBar": "major",
       "maxRounds": 3,
-      "fixerEffort": "xhigh",
       "grillEveryOneWayFix": true,
       "extras": []
     },
@@ -72,13 +68,12 @@
       "conditionalLenses": true,
       "followUpLenses": ["fixes", "adversary"],
       "model": "opus",
-      "effort": "xhigh",
+      "effort": "high",
       "secondModel": "fable",
       "skeptics": true,
       "skepticModel": "sonnet",
       "severityBar": "minor",
       "maxRounds": 4,
-      "fixerEffort": "xhigh",
       "grillEveryOneWayFix": true,
       "extras": ["rollback-plan", "smoke"]
     }

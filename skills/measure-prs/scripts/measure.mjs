@@ -142,6 +142,25 @@ function groupOf(file, mainFile) {
 // output 5x. It compares runs; it is not a bill (models differ in price).
 const weigh = (u) => Math.round(u.input + 1.25 * u.cacheWrite + 0.1 * u.cacheRead + 5 * u.output);
 
+// The same usage in dollars at API list prices (November 2026), so runs on different models compare:
+// [model id pattern, $ per million input tokens, $ per million cache-read tokens]. Output costs 5x input
+// and a cache write 1.25x. First match wins; a model not listed counts as the current Opus. Not a bill.
+const PRICES = [
+  [/fable-5-2|mythos-5-2/, 8, 0.2],
+  [/fable|mythos/, 10, 1],
+  [/opus-5-5/, 4, 0.2],
+  [/opus/, 5, 0.5],
+  [/sonnet-5-5/, 2, 0.1],
+  [/sonnet-5/, 2, 0.2],
+  [/sonnet/, 3, 0.3],
+  [/haiku-5-5/, 0.1, 0.01],
+  [/haiku/, 1, 0.1],
+];
+export function usdOf(model, u) {
+  const [, input, read] = PRICES.find(([pattern]) => pattern.test(model)) ?? PRICES[2];
+  return (u.input * input + u.cacheWrite * input * 1.25 + u.cacheRead * read + u.output * input * 5) / 1e6;
+}
+
 export function countTokens({ scratch, session, started, ended }) {
   const id = sessionId({ scratch, session });
   const mainFile = id ? findTranscript(id) : null;
@@ -177,9 +196,10 @@ export function countTokens({ scratch, session, started, ended }) {
     }
   }
   for (const g of Object.values(groups)) g.weighted = weigh(g);
-  for (const m of Object.values(models)) m.weighted = weigh(m);
+  for (const [name, m] of Object.entries(models)) { m.weighted = weigh(m); m.usd = usdOf(name, m); }
   const weighted = Object.values(groups).reduce((sum, g) => sum + g.weighted, 0);
-  return { source: 'transcript', session: id, weighted, groups, models };
+  const usd = Object.values(models).reduce((sum, m) => sum + m.usd, 0);
+  return { source: 'transcript', session: id, weighted, usd, groups, models };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -237,8 +257,15 @@ function baseRecord(opts, kind) {
   };
 }
 
+const cents = (usd) => Math.round(usd * 100) / 100;
 const compactTokens = (t) => (t.source === 'transcript'
-  ? { source: t.source, weighted: t.weighted, byGroup: Object.fromEntries(Object.entries(t.groups).map(([k, g]) => [k, g.weighted])) }
+  ? {
+      source: t.source,
+      weighted: t.weighted,
+      usd: cents(t.usd),
+      byGroup: Object.fromEntries(Object.entries(t.groups).map(([k, g]) => [k, g.weighted])),
+      usdByModel: Object.fromEntries(Object.entries(t.models).map(([k, m]) => [k.replace(/^claude-/, ''), cents(m.usd)])),
+    }
   : { source: 'unknown', reason: t.reason });
 
 function cmdRound(opts) {
@@ -361,12 +388,13 @@ export function aggregate(records, { since } = {}) {
   }
   const tiers = {};
   for (const r of rounds) {
-    const t = (tiers[r.tier] ??= { prs: new Set(), finished: 0, rounds: 0, invalid: 0, minutes: [], tokens: [], prTokens: [], byIndex: {}, byScope: {}, lenses: {}, kept: 0, refuted: 0, fixed: 0, declined: 0, escalated: 0 });
+    const t = (tiers[r.tier] ??= { prs: new Set(), finished: 0, rounds: 0, invalid: 0, minutes: [], tokens: [], usd: [], prTokens: [], byIndex: {}, byScope: {}, lenses: {}, kept: 0, refuted: 0, fixed: 0, declined: 0, escalated: 0 });
     t.prs.add(r.prUrl ?? r.pr);
     if (!r.valid) { t.invalid++; continue; }
     t.rounds++;
     t.minutes.push(r.minutes);
     if (r.tokens?.source === 'transcript') t.tokens.push(r.tokens.weighted);
+    if (typeof r.tokens?.usd === 'number') t.usd.push(r.tokens.usd);
     const idx = (t.byIndex[r.round] ??= { n: 0, notClean: 0, tokens: [] });
     idx.n++; if (r.clean === false) idx.notClean++; if (r.tokens?.weighted) idx.tokens.push(r.tokens.weighted);
     const sc = (t.byScope[r.scope ?? 'full'] ??= { n: 0, tokens: [], minutes: [] });
@@ -433,12 +461,13 @@ export function escapeScans(records) {
 }
 
 function renderReport(agg, scopeLabel) {
-  const lines = [`# PR review metrics · ${scopeLabel}`, '', `${agg.prs} PRs finished, ${agg.rounds} rounds recorded. Tokens are weighted input-token equivalents.`, ''];
+  const lines = [`# PR review metrics · ${scopeLabel}`, '', `${agg.prs} PRs finished, ${agg.rounds} rounds recorded. Tokens are weighted input-token equivalents; $ is the same usage at each model's API list price.`, ''];
   const hasPhases = Object.keys(agg.phases ?? {}).length > 0;
   if (!agg.rounds && !hasPhases) return [...lines, 'No rounds recorded yet. babysit-pr records one per round from version 4.0.0 on; `import` reads markers from older PRs.'].join('\n');
-  if (agg.rounds) lines.push('## Per tier', '', '| Tier | PRs | Rounds | Median min/round | Median tokens/round | Median tokens/PR | Kept | Refuted | Fixed | Declined | Decisions | Escaped |', '|---|---|---|---|---|---|---|---|---|---|---|---|');
+  if (agg.rounds) lines.push('## Per tier', '', '| Tier | PRs | Rounds | Median min/round | Median tokens/round | Median $/round | Median tokens/PR | Kept | Refuted | Fixed | Declined | Decisions | Escaped |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (const [tier, t] of Object.entries(agg.tiers)) {
-    lines.push(`| ${tier} | ${t.prs.size} | ${t.rounds}${t.invalid ? ` (+${t.invalid} failed)` : ''} | ${median(t.minutes) ?? '–'} | ${M(median(t.tokens))} | ${M(median(t.prTokens))} | ${t.kept} | ${t.refuted} | ${t.fixed} | ${t.declined} | ${t.escalated} | ${t.merged ? `${t.escaped?.size ?? 0} of ${t.merged}` : '–'} |`);
+    const usd = t.usd?.length ? `$${median(t.usd).toFixed(2)}` : '–';
+    lines.push(`| ${tier} | ${t.prs.size} | ${t.rounds}${t.invalid ? ` (+${t.invalid} failed)` : ''} | ${median(t.minutes) ?? '–'} | ${M(median(t.tokens))} | ${usd} | ${M(median(t.prTokens))} | ${t.kept} | ${t.refuted} | ${t.fixed} | ${t.declined} | ${t.escalated} | ${t.merged ? `${t.escaped?.size ?? 0} of ${t.merged}` : '–'} |`);
   }
   for (const [tier, t] of Object.entries(agg.tiers)) {
     lines.push('', `## ${tier}`, '', '| Round | Rounds | Not clean | Median tokens |', '|---|---|---|---|');

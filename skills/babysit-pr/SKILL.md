@@ -74,6 +74,8 @@ its SKILL.md lists the few differences.
    user in one line where you pick up, then continue there.
 
 This runs for hours of wall-clock. If this session has unrelated work in flight, suggest a session of its own.
+The session only conducts: every reviewer, skeptic and fixer runs on the model and effort its tier names in
+`references/tiers.json`, whatever the session's model is. Never raise them yourself.
 
 ## 1. Triage
 

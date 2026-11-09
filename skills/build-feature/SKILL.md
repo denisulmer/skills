@@ -34,8 +34,8 @@ The spec's shape is [spec-feature's spec-format.md](../spec-feature/references/s
 
 ## 2. Build
 
-Spawn one builder with the Agent tool: `model` omitted (session model), `effort` = the forecast tier's
-`fixerEffort` from `<base>/../babysit-pr/references/tiers.json`, description `builder: <slug>`. Prompt:
+Spawn one builder with the Agent tool: `model` and `effort` = the forecast tier's `model` and `effort`
+from `<base>/../babysit-pr/references/tiers.json` (the spec's `risk:`), description `builder: <slug>`. Prompt:
 "Read <base>/references/builder.md and follow it", then the inputs it lists. Save its JSON block to
 `<scratch>/build-<n>.json` (n counts passes). It runs in the foreground of this step; wait for it.
 

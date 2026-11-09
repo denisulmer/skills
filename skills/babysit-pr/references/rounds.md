@@ -78,8 +78,9 @@ fixed head. Build threads show in the round's summary but never make a round unc
 
 ## 3. Fixing, pushing, resolving
 
-1. Spawn one fixer with the Agent tool: `model` omitted (session model), `effort` = the tier's
-   `fixerEffort`, description `fixer: round <n>` (`fixer: round <n> decisions` for the second pass; the
+1. Spawn one fixer with the Agent tool: `model` and `effort` = the tier's `model` and `effort` (not
+   the session's: a fix with a failing test is well-scoped work, and the tier already sizes the model for
+   it), description `fixer: round <n>` (`fixer: round <n> decisions` for the second pass; the
    metrics group agents by it). Prompt: "Read <base>/references/fixer.md and follow it", then the inputs
    it lists. Save its JSON block to `round-<n>-fixer.json` (`round-<n>-fixer-decisions.json` for the second
    pass).
@@ -88,7 +89,8 @@ fixed head. Build threads show in the round's summary but never make a round unc
    push again.
 3. Run the checks yourself on the pushed head; never take the fixer's word for them:
    `<checks> run --base <mergeBase> --target origin/<target> --repo <wt> > <scratch>/round-<n>-checks.json`.
-   A failure goes back to the fixer. Exit code 3 means the profile has no checks block: run its Checks
+   A failure goes back to the fixer, one effort level higher (never above `high`): effort comes before a
+   bigger model. Exit code 3 means the profile has no checks block: run its Checks
    section's fast check by hand and write `{"status":"none"}` to the file.
 4. `<babysit> reply --fixer <scratch>/round-<n>-fixer.json --checks <scratch>/round-<n>-checks.json` posts
    the Fixed, Declined and Needs replies and sets each status. It refuses while the checks failed or ran on

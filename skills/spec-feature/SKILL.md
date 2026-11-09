@@ -70,7 +70,8 @@ the default you took instead and move on.
 
 ## 5. Check (medium tier and up)
 
-Spawn one skeptic with the Agent tool (description `spec skeptic: <slug>`): give it the spec file and the
+Spawn one skeptic with the Agent tool (description `spec skeptic: <slug>`, `model` and `effort` = the
+forecast tier's from `<base>/../babysit-pr/references/tiers.json`): give it the spec file and the
 repository, and ask it to find, with file:line where it applies, ACs that cannot be verified as written,
 ACs that contradict each other or a decision, behaviour the Why implies but no AC covers, edge cases from
 step 2's order with no AC, and plan entries that touch a one-way door no decision covers. It changes
