@@ -12,7 +12,8 @@ reads more elsewhere), so it summarizes and links.
   it, never from the current description, which is already the rewrite.
 - **Keep the substance.** Carry forward what the author wrote that a reader needs: the why, the evidence,
   links to work items. Fixes from the rounds update it.
-- **Collect the 👀 list.** Every declined finding, every refuted comment from a person, every fix in a
+- **Collect the 👀 list.** Every declined finding, every major or blocker finding a skeptic disproved
+  (🟠 or 🔴 in a round summary's Disproved list), every refuted comment from a person, every fix in a
   danger-map area the PR did not touch before, and a tier raised mid-way: one line each, with a link.
   When it is empty, say "Nothing to glance at." Do not pad it.
 - **Critical tier only:** run the profile's smoke check, and write a rollback plan: the exact revert,
@@ -42,7 +43,7 @@ reads more elsewhere), so it summarizes and links.
 
 ## Review
 
-🤖 **Risk <score>/100 · <tier>** · <n> rounds · ✅ <n> fixed · 🧭 <n> decided · ↩️ <n> declined · <last rounds clean>
+🤖 **Risk <score>/100 · <tier>** · <n> rounds · ✅ <n> fixed · 🧭 <n> decided · ↩️ <n> declined · <last round clean>
 
 👀 **Worth a glance**
 

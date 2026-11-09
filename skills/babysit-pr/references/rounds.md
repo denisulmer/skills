@@ -20,7 +20,7 @@ Its files live in the scratch directory: `round-<n>-args.json`, `round-<n>-resul
 
 ## 1. Starting a round
 
-1. `<babysit> state` says what comes next (`next.action`): `round`, `ask-another`, `round-limit`,
+1. `<babysit> state` says what comes next (`next.action`): `round`, `round-limit`,
    `fix-build`, `fix`, `await-decisions`, `close`, `report` or `merge-gate`, and why. Follow it; it applies
    SKILL.md's stop rule.
 2. `<babysit> args --target origin/<target> [--tier <tier> --tier-reason "<why>"]` writes
@@ -29,22 +29,38 @@ Its files live in the scratch directory: `round-<n>-args.json`, `round-<n>-resul
    has no intent on its triage thread: pass `--intent-file <scratch>/intent.txt`. It picks the scope:
    - `full`, the tier's lenses over the whole PR: round 1, after the tier went up, and after commits this
      review did not write (no `Refs: pr-babysit` trailer, not the nits commit, not a merge) landed;
-   - `delta`, the tier's `followUpLenses` over the commits since the last reviewed head: every other
-     round, and every later round in review-only mode.
+   - `delta`, a follow-up round: the tier's `followUpLenses` over only the commits since the last
+     reviewed head. Every other round, and every later round in review-only mode.
+
+   `ask: true` marks a second full round, which costs as much as the first: ask the user before you
+   start it (Another round, style.md). Follow-up rounds never ask. Once the review is done, `args`
+   refuses a new round unless someone else pushed or a person waits for an answer.
 3. Start `Workflow` with the file's object as `args` (not stringified). Try `scriptPath:
    <base>/workflows/review-round.js` first. If the tool refuses the path as unreadable (a plugin install
    directory often is), pass the file's contents once as `script`, and for every later round use the
    `scriptPath` that launch returned, so the script enters this conversation only once.
 4. If the Workflow tool is unavailable, tell the user, read the workflow file and run the same reviewers
    and skeptics as parallel Agent calls with its prompts, keeping its rules: only the adversary builds or
-   runs tests, and minor findings share one skeptic.
+   runs tests, reports of one defect are merged into one finding before the skeptics see it, and
+   findings share skeptics in batches.
 
 **Reading the result.** Save the returned object verbatim to `round-<n>-result.json`; don't open the
-agents' transcripts. When it says `valid: false`, post nothing from it: record the metrics with
-`node <base>/../measure-prs/scripts/measure.mjs round` (flags in its header), tell the user its `reason` and
-`failed` list in one message (Round failed), send the notification, and stop. A usage limit is the usual
-cause. To retry, start the same round again with `resumeFromRunId: <its run id>`, so the agents that
-finished are not paid for twice (same session only; in a new session, rerun `args` and the round).
+agents' transcripts. When it says `valid: false`, post nothing from it and record the metrics with
+`node <base>/../measure-prs/scripts/measure.mjs round` (flags in its header). Then find out why the agents
+got no answer: the notification or your own last error says it; when neither does, search the run's
+transcript directory for `limit` and read nothing else there.
+
+- **A 5-hour usage limit** (it names a reset time within hours): tell the user in one line when the
+  round resumes (Round failed, style.md), wait in the background until a few minutes after the reset (a
+  background command that sleeps until then; chain two when the reset is more than two hours away), then
+  start the same round again with `resumeFromRunId: <its run id>`, without asking. The agents that
+  finished are not paid for twice. When the limit stopped you as well and the user's next message is what
+  wakes you, retry at once if the reset has passed. One automatic retry per round: a second failure goes
+  to the user.
+- **A weekly limit, or any other cause:** tell the user its `reason` and `failed` list in one message
+  (Round failed), send the notification, and stop. On their **retry**, resume the same way.
+
+Resuming works in the same session only; in a new session, rerun `args` and the round.
 
 ## 2. Recording findings
 

@@ -196,20 +196,30 @@ export function nextStep(a) {
     if (open.some((f) => f.status === 'pending')) return { action: 'await-decisions', round: openRound, why: `${open.filter((f) => f.status === 'pending').length} decision(s) waiting for the user` };
     return { action: 'close', round: openRound, why: `every finding of round ${openRound} is handled; post its summary` };
   }
-  const last = a.summaries.at(-1)?.round ?? 0;
-  if (last === 0) return { action: 'round', round: 1, why: 'triage done, no round yet' };
-  let streak = 0;
-  for (const s of [...a.summaries].reverse()) { if (!s.clean) break; streak++; }
-  if (last >= t.minRounds && streak >= t.cleanRoundsNeeded) return { action: a.report ? 'merge-gate' : 'report', why: `${streak} clean round(s) in a row after ${last} round(s)` };
-  if (last >= t.maxRounds) return { action: 'round-limit', round: last, why: `${t.maxRounds} rounds without ${t.cleanRoundsNeeded} clean in a row` };
-  if (last >= t.minRounds) return { action: 'ask-another', round: last + 1, why: `round ${last} was not clean; the tier's minimum of ${t.minRounds} is reached` };
-  return { action: 'round', round: last + 1, why: `the tier needs at least ${t.minRounds} rounds` };
+  const last = a.summaries.at(-1);
+  if (!last) return { action: 'round', round: 1, why: 'triage done, no round yet' };
+  const done = a.report ? 'merge-gate' : 'report';
+  if (last.clean) return { action: done, why: `round ${last.round} was clean` };
+  // An unclean round whose findings were all declined or decided without a change leaves nothing to
+  // verify. Only when every head we know (the host's, the checkout's) is still the reviewed commit.
+  const unchanged = Boolean(last.reviewed) && a.heads?.length > 0 && a.heads.every((h) => sameSha(h, last.reviewed));
+  if (unchanged && !a.human.length) return { action: done, why: `round ${last.round} was not clean, but nothing changed since: its findings were declined or decided without a change` };
+  if (last.round >= t.maxRounds) return { action: 'round-limit', round: last.round, why: `${t.maxRounds} rounds without a clean one` };
+  return { action: 'round', round: last.round + 1, why: `round ${last.round} was not clean; the next round verifies its fixes` };
+}
+
+const sameSha = (a, b) => Boolean(a && b) && (a.startsWith(b) || b.startsWith(a));
+
+// The PR head as the host reports it and as the checkout has it. A host can lag behind a push, so
+// "nothing changed" needs both to agree.
+function headsOf(show, opts) {
+  return [show.sourceCommit, tryGit(opts.repo ?? process.cwd(), ['rev-parse', 'HEAD'])].filter(Boolean);
 }
 
 function cmdState(opts) {
   need(opts, 'pr');
   const { show, threads } = readPr(opts);
-  const a = analyse(show, threads);
+  const a = { ...analyse(show, threads), heads: headsOf(show, opts) };
   return {
     pr: { id: show.id, title: show.title, status: show.status, isDraft: show.isDraft, webUrl: show.webUrl, head: show.sourceCommit },
     mode: a.mode,
@@ -248,11 +258,9 @@ export function triageBody(risk, tierName) {
     ...(risk.floor > 0 && risk.boundReasons?.length ? [`- **Floor ${risk.floor}:** ${risk.boundReasons[0]}`] : []),
     `- **Safe because:** ${risk.safeBecause}${risk.safeBecauseProven ? '' : ' ⚠️ Unproven: round 1 checks this first.'}`,
   ];
-  const rounds = t.minRounds === t.maxRounds ? `${t.minRounds} round` : `${t.minRounds}–${t.maxRounds} rounds`;
-  const done = t.cleanRoundsNeeded > 1 ? `${t.cleanRoundsNeeded} clean rounds in a row` : `a clean one with no ${t.severityBar} finding`;
   const first = [...t.portionLenses.map((l) => `${l} per part`), ...t.wholeLenses.filter((l) => !t.portionLenses.includes(l))];
-  const skeptics = t.refuters > 0 ? ` · ${t.refuters} skeptic${t.refuters > 1 ? 's' : ''} check every major finding` : '';
-  const later = t.maxRounds > 1 ? `, later rounds only the fixes (${lensText(t.followUpLenses ?? t.wholeLenses)})` : '';
+  const skeptics = t.skeptics ? ' · a skeptic checks every finding before it is posted' : '';
+  const later = t.maxRounds > 1 ? ` · if it keeps a ${t.severityBar} finding, follow-up rounds check only the fixes, up to ${t.maxRounds} rounds in all` : '';
   return [
     `🤖 **Risk ${risk.score}/100 · ${tierName} review**`,
     '',
@@ -260,7 +268,7 @@ export function triageBody(risk, tierName) {
     '',
     ...bullets,
     '',
-    `**Plan:** ${rounds}, done after ${done} · round 1 reviews the whole change (${lensText(first)})${later}${skeptics}`,
+    `**Plan:** round 1 reviews the whole change (${lensText(first)})${later}${skeptics}`,
   ].join('\n');
 }
 
@@ -346,21 +354,25 @@ function findSpec(repo, target, mergeBase) {
 function cmdArgs(opts) {
   need(opts, 'pr', 'repo', 'target', 'scratch');
   const { show, threads } = readPr(opts);
-  const a = analyse(show, threads);
+  const a = { ...analyse(show, threads), heads: headsOf(show, opts) };
   if (!a.triage) throw new Error('no triage thread: run triage first');
   const intent = a.triage.intent ?? (typeof opts['intent-file'] === 'string' ? readFileSync(opts['intent-file'], 'utf8').trim() : null);
   if (!intent) throw new Error('the triage thread has no intent in its marker (posted before 4.1); pass --intent-file');
   const next = nextStep(a);
-  if (!['round', 'ask-another', 'round-limit'].includes(next.action)) throw new Error(`the next step is ${next.action} (${next.why}), not a new round`);
-  const round = next.action === 'round-limit' ? next.round + 1 : next.round;
+  const lastRound = a.summaries.at(-1) ?? null;
+  const sinceSha = lastRound?.reviewed ?? null;
+  const foreign = sinceSha ? foreignCommits(opts.repo, sinceSha, opts.target) : [];
+  // A finished review opens again when someone else pushed or a person waits for an answer.
+  const reopened = ['report', 'merge-gate'].includes(next.action) && (foreign.length > 0 || a.human.length > 0);
+  if (!['round', 'round-limit'].includes(next.action) && !reopened) throw new Error(`the next step is ${next.action} (${next.why}), not a new round`);
+  const round = next.action === 'round' ? next.round : lastRound.round + 1;
   const previousTier = a.tier;
   const tierName = typeof opts.tier === 'string' ? opts.tier : previousTier;
   if (!TIERS.tiers[tierName]) throw new Error(`unknown tier ${tierName}`);
   const tierOrder = Object.keys(TIERS.tiers);
   if (tierOrder.indexOf(tierName) < tierOrder.indexOf(previousTier)) throw new Error(`the tier never goes down (${previousTier} -> ${tierName})`);
-  const sinceSha = a.summaries.at(-1)?.reviewed ?? null;
   const mode = typeof opts.mode === 'string' ? opts.mode : a.mode;
-  const { scope, why } = decideScope({ round, mode, tierRaised: tierName !== previousTier, sinceSha, foreignCommits: sinceSha ? foreignCommits(opts.repo, sinceSha, opts.target) : [] });
+  const { scope, why } = decideScope({ round, mode, tierRaised: tierName !== previousTier, sinceSha, foreignCommits: foreign });
 
   const headSha = git(opts.repo, ['rev-parse', 'HEAD']);
   const mergeBase = git(opts.repo, ['merge-base', opts.target, 'HEAD']);
@@ -390,7 +402,9 @@ function cmdArgs(opts) {
   mkdirSync(opts.scratch, { recursive: true });
   const file = join(opts.scratch, `round-${round}-args.json`);
   writeFileSync(file, JSON.stringify({ ...args, _babysit: meta }, null, 2));
-  return { file, round, tier: tierName, scope, scopeWhy: why, sinceSha, headSha, human: args.human.length, prior: args.prior.length, spec: spec ? { path: spec.path, acs: spec.acs.length, missingTests: spec.missingTests } : null, specWarning, next };
+  // A second full round costs as much as the first, so the user says yes to it; a follow-up round does not ask.
+  const ask = round > 1 && scope === 'full';
+  return { file, round, tier: tierName, scope, scopeWhy: why, ask, sinceSha, headSha, human: args.human.length, prior: args.prior.length, spec: spec ? { path: spec.path, acs: spec.acs.length, missingTests: spec.missingTests } : null, specWarning, next };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -402,6 +416,7 @@ export function findingBody(f, round, tierName) {
     `🤖 ${ICON[f.severity]} **${cap(f.severity)} · ${f.id}:** ${f.title}`,
     '',
     `${f.claim}${f.impact ? ` ${f.impact}` : ''}`,
+    ...(f.alsoAt?.length ? ['', `Reported more than once; the same defect also shows at ${f.alsoAt.map((at) => `\`${at}\``).join(', ')}.`] : []),
     '',
     '**Evidence:**',
     '',
@@ -609,9 +624,12 @@ function outcomeCell(f, show, fixerById, choices) {
   return '↩️ false positive';
 }
 
-// Clean = no review finding at or above the tier's bar, people's confirmed comments included. Build
-// threads were fixed before the review started and do not count.
-export const isClean = (findings, tier) => !findings.some((f) => f.kind !== 'build' && rank(f.severity) >= rank(tier.severityBar));
+// Clean = no review finding at or above the bar, people's confirmed comments included. The bar is the
+// tier's for a round over the whole change and major for a round over the fixes: a minor in a fix is
+// fixed and listed, and never buys another round. Build threads were fixed before the review started
+// and do not count.
+export const barOf = (tier, scope) => (scope === 'delta' ? 'major' : tier.severityBar);
+export const isClean = (findings, tier, scope) => !findings.some((f) => f.kind !== 'build' && rank(f.severity) >= rank(barOf(tier, scope)));
 
 export function summaryBody({ n, args, result, findings, show, fixers, choices, next }) {
   const t = args.tier;
@@ -634,20 +652,21 @@ export function summaryBody({ n, args, result, findings, show, fixers, choices, 
       lines.push(`| ${ICON[f.severity]} | [${f.id}](${f.url}) ${f.title.replace(/\|/g, '\\|')} | ${outcomeCell(f, show, fixerById, choices)} |`);
     }
   }
-  const above = findings.filter((f) => f.kind !== 'build' && rank(f.severity) >= rank(t.severityBar)).length;
-  const clean = isClean(findings, t);
+  const bar = barOf(t, args.scope);
+  const above = findings.filter((f) => f.kind !== 'build' && rank(f.severity) >= rank(bar)).length;
+  const clean = isClean(findings, t, args.scope);
   const nextText = {
-    round: `round ${next.round} is next${next.scope === 'delta' ? ', on the fixes only' : ''}`,
-    'ask-another': `another round needs your yes`,
+    round: `round ${next.round} is next${next.scope === 'delta' ? ', on the fixes only; done once they hold no major finding' : ''}`,
     'round-limit': 'the round limit is reached',
     report: 'the review is done',
     'merge-gate': 'the review is done',
   }[next.action] ?? next.why;
-  const doneRule = t.cleanRoundsNeeded > 1 ? `${t.cleanRoundsNeeded} clean rounds in a row` : `a round with no ${t.severityBar} finding`;
-  if (findings.length) lines.push('', `**${clean ? 'Clean' : `Not clean** (${above} at or above ${t.severityBar})`}${clean ? '**' : ''} → ${nextText}; done after ${doneRule}.`);
+  const unchanged = !clean && ['report', 'merge-gate'].includes(next.action) ? ': nothing changed since, so there is no fix to verify' : '';
+  if (findings.length) lines.push('', `**${clean ? 'Clean' : 'Not clean'}** (${clean ? 'nothing' : above} at or above ${bar}) → ${nextText}${unchanged}.`);
   if (result.dropped?.length) {
+    // A disproved major or blocker shows its severity, so it can be listed under "worth a glance".
     lines.push('', `**Disproved before posting:** ${result.dropped.length}`, '');
-    for (const d of result.dropped) lines.push(`- \`${d.file}:${d.line}\` ${d.title}: ${String(d.reason).split(' / ')[0]}`);
+    for (const d of result.dropped) lines.push(`- ${rank(d.severity) >= rank('major') ? `${ICON[d.severity]} ` : ''}\`${d.file}:${d.line}\` ${d.title}: ${String(d.reason).split(' / ')[0]}`);
   }
   if (result.nits?.length) {
     const nitsCommit = fixers.map((x) => x?.nitsCommit).find(Boolean);
@@ -655,7 +674,9 @@ export function summaryBody({ n, args, result, findings, show, fixers, choices, 
   }
   const reviewed = args.scope === 'delta' && args.repo.sinceSha ? `the fixes since \`${short(args.repo.sinceSha)}\` up to \`${short(args.repo.headSha)}\`` : `\`${short(args.repo.headSha)}\``;
   const reviewers = result.coverage?.reviewers ?? [];
-  const skeptics = t.refuters > 0 ? ` · ${t.refuters} skeptic${t.refuters > 1 ? 's' : ''} per major finding, 1 for the minor ones` : '';
+  const merged = result.coverage?.duplicatesMerged ?? 0;
+  const skepticCount = result.coverage?.skeptics ?? 0;
+  const skeptics = `${merged ? ` · ${merged} duplicate report${merged === 1 ? '' : 's'} merged` : ''}${skepticCount ? ` · every finding checked by a skeptic (${skepticCount})` : ''}`;
   lines.push('', `_Reviewed ${reviewed} · ${reviewers.length} reviewer${reviewers.length === 1 ? '' : 's'}${reviewers.length ? ` (${lensText(reviewers)})` : ''} · ${t.model ?? 'session model'} ${t.effort}${skeptics}_`);
   return { body: lines.join('\n'), clean };
 }
@@ -669,11 +690,11 @@ function cmdSummary(opts) {
   const fixers = existsSync(opts.scratch) ? readdirSync(opts.scratch).filter((f) => new RegExp(`^round-${n}-fixer.*\\.json$`).test(f)).map((f) => tryJson(join(opts.scratch, f))) : [];
   const choices = tryJson(join(opts.scratch, `round-${n}-choices.json`));
   const { show, threads } = readPr(opts);
-  const a = analyse(show, threads);
+  const a = { ...analyse(show, threads), heads: headsOf(show, opts) };
   const findings = a.findings.filter((f) => f.round === n);
   // Decide what comes after this round as if its summary were already posted.
-  const cleanNow = isClean(findings, args.tier);
-  const next = nextStep({ ...a, findings: a.findings.filter((f) => f.round !== n), summaries: [...a.summaries.filter((s) => s.round !== n), { round: n, clean: cleanNow, tier: args.tierName }], tier: args.tierName });
+  const cleanNow = isClean(findings, args.tier, args.scope);
+  const next = nextStep({ ...a, findings: a.findings.filter((f) => f.round !== n), summaries: [...a.summaries.filter((s) => s.round !== n), { round: n, clean: cleanNow, tier: args.tierName, reviewed: args.repo.headSha }], tier: args.tierName });
   if (next.action === 'round') next.scope = 'delta';
   const { body, clean } = summaryBody({ n, args, result, findings, show, fixers, choices, next });
   const state = { v: 1, round: n, tier: args.tierName, scope: args.scope, clean, reviewed: args.repo.headSha, since: args.repo.sinceSha ?? null };

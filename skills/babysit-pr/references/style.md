@@ -17,8 +17,9 @@ need them cannot be missed.
    "Risk 52/100 · medium review". Detail follows for whoever wants it.
 2. **Three attention levels, always visibly different.**
    - ❓ **Needs you**: a decision, an approval, a stuck merge. Only these reach chat and push notifications.
-   - 👀 **Worth a glance**: judgement calls a person may disagree with: a declined finding, a refuted
-     comment from a colleague, a fix in a risky area, a tier raised mid-way. One line each with a link,
+   - 👀 **Worth a glance**: judgement calls a person may disagree with: a declined finding, a major
+     finding a skeptic disproved, a refuted comment from a colleague, a fix in a risky area, a tier
+     raised mid-way. One line each with a link,
      in the report and in the merge question.
    - Everything else is audit trail: posted, resolved, never pushed at the user.
 3. **The same icons everywhere.** Severity: 🔴 blocker · 🟠 major · 🟡 minor · ⚪ nit. Outcome:
@@ -31,7 +32,7 @@ need them cannot be missed.
    cuts), with the command named above it.
 7. **Link instead of repeating.** A summary names a finding in a few words and links to its thread.
    Threads: `<thread url>`. Commits: `<repoWebUrl>/commit/<full sha>`, shown as the short sha in backticks.
-8. **Machinery last, in italics.** Who found it, which model, skeptic votes, round: readers skip it,
+8. **Machinery last, in italics.** Who found it, which model, the skeptic's verdict, round: readers skip it,
    auditors find it.
 9. **The repository's words, not the machinery's.** Domain nouns from `CONTEXT.md`. Say "reviewer",
    "check", "round". Never mention agents, lenses, prompts, schemas, workflows or tokens.
@@ -58,7 +59,7 @@ one of them goes into both places. Its bodies also end with a hidden `<!-- babys
 - **Floor 55:** the legacy self-service layer must stay 1:1 with the legacy API.
 - **Safe because:** no supplier has called `/account-information` in 90 days. ⚠️ Unproven: round 1 checks this first.
 
-**Plan:** 2–3 rounds, done after a clean one with no major finding · round 1 reviews the whole change with 7 reviewers, later rounds only the fixes with 2 · 3 skeptics check every major finding
+**Plan:** round 1 reviews the whole change (correctness per part, standards and intent, blast radius, adversary) · if it keeps a major finding, follow-up rounds check only the fixes, up to 3 rounds in all · a skeptic checks every finding before it is posted
 ~~~
 
 ### Finding (`pr-babysit:R<n>-F<k>`, inline, status `active`)
@@ -67,6 +68,8 @@ one of them goes into both places. Its bodies also end with a hidden `<!-- babys
 🤖 🟠 **Major · R2-F1:** a supplier key without an expiry date gets a 500 on every call
 
 `ApiKeyHandler.cs:42` reads `key.ExpiresAt.Value` before checking `HasValue`. Keys issued before ADR-0012 have no expiry date.
+
+Reported more than once; the same defect also shows at `KeyRotationJob.cs:17`.
 
 **Evidence:** `dotnet test --filter ApiKeyHandlerTests`
 
@@ -77,8 +80,11 @@ ApiKeyHandlerTests.Key_without_expiry_is_accepted   FAILED
 
 **Suggested fix:** treat a missing expiry as "never expires" and cover it in `ApiKeyHandlerTests`.
 
-_Found by correctness and adversary reviewers · upheld by 3 of 3 skeptics · round 2, high review_
+_Found by correctness and adversary reviewers · upheld by a skeptic · round 2, high review_
 ~~~
+
+The "Reported more than once" line appears only when several reviewers reported the defect; they share
+this one thread.
 
 ### Replies on a finding
 
@@ -155,30 +161,31 @@ Answered (status `closed`):
 | 🟡 | [R2-F3](<thread url>) no test for a disabled supplier | ✅ [`9a8b7c6`](<commit url>) |
 | 🟡 | [R2-F4](<thread url>) log line shows the key prefix | ↩️ by design, ADR-0038 |
 
-**Not clean** (2 major) → round 3 is next, on the fixes only; done after a round with no major finding.
+**Not clean** (2 at or above major) → round 3 is next, on the fixes only; done once they hold no major finding.
 
 **Disproved before posting:** 3
 
-- `Auth.cs:40` wrong status for an expired key: `KeyMiddleware.cs:18` handles it first
+- 🟠 `Auth.cs:40` wrong status for an expired key: `KeyMiddleware.cs:18` handles it first
 - `ui.tsx:12` missing translation: the key exists in every catalog
 - `Program.cs:88` middleware order: covered by `AuthPipelineTests`
 
 **Nits:** 2 fixed in [`aa11bb2`](<commit url>), 1 skipped
 
-_Reviewed the fixes since `c4d5e6f` up to `fa6b973` · 2 reviewers (correctness, tests) · opus high · 3 skeptics per major finding, 1 for the minor ones_
+_Reviewed the fixes since `c4d5e6f` up to `fa6b973` · 1 reviewer (fixes) · opus high · 1 duplicate report merged · every finding checked by a skeptic (2)_
 
 <!-- pr-metrics {"v":1,"kind":"round","round":2,…} -->
 ~~~
 
-The marker is the `marker` that `measure.mjs round` printed, pasted unchanged as the last line. Hosts
-don't render it; the measure-prs skill reads it back.
+A disproved major or blocker finding carries its icon in the Disproved list and goes on the 👀 list. The
+marker is the `marker` that `measure.mjs round` printed, pasted unchanged as the last line. Hosts don't
+render it; the measure-prs skill reads it back.
 
 A clean round is one line plus the machinery line:
 
 ~~~markdown
 🤖 **Round 3 of up to 3 · high review:** ✅ clean, nothing found
 
-_Reviewed the fixes since `fa6b973` up to `b2c3d4e` · 2 reviewers · opus high · 2 findings disproved by skeptics_
+_Reviewed the fixes since `fa6b973` up to `b2c3d4e` · 1 reviewer (fixes) · opus high_
 ~~~
 
 ### Report thread (`pr-babysit:report`, status `closed`)
@@ -190,6 +197,7 @@ _Reviewed the fixes since `fa6b973` up to `b2c3d4e` · 2 reviewers · opus high 
 
 - [R2-F4](<thread url>) declined as by design: ADR-0038 allows the key prefix in logs
 - [Jane Doe's comment](<thread url>) refuted: disabled suppliers are rejected earlier by `SessionGuard`
+- 🟠 Disproved by a skeptic in [round 2](<summary url>): wrong status for an expired key (`KeyMiddleware.cs:18` handles it first)
 - Review raised from medium to high in round 2: a fix touched the legacy self-service layer
 
 ### Rounds
@@ -223,7 +231,7 @@ _Reviewed the fixes since `fa6b973` up to `b2c3d4e` · 2 reviewers · opus high 
 ### Triage line
 
 ~~~markdown
-**PR !27887 · risk 52/100 · medium review:** 2–3 rounds, done after a clean one. Round 1 is running; I'll only interrupt you for decisions.
+**PR !27887 · risk 52/100 · medium review:** round 1 reviews the whole change and is running now; follow-up rounds only check the fixes. I'll only interrupt you for decisions.
 ~~~
 
 ### Decisions
@@ -249,15 +257,24 @@ Reply like `1A 2B`, or `ok` for all recommendations.
 
 ### Another round?
 
-Sent before any round past the tier's minimum. The answer is yes or no.
+Sent only before a second full round (`args` printed `ask: true`): someone else pushed, or the tier
+rose. Follow-up rounds over the fixes never ask. The answer is yes or no.
 
 ~~~markdown
-**PR !27887 · round 2 of up to 3 is done:** ✅ 3 fixed, nothing major open
+**PR !27887 · 3 commits arrived after round 2** that this review did not write.
 
-Another round would review the 4 fix commits with 2 reviewers (~1 h). Run it, or go to the report?
+Reviewing the whole change again takes 7 reviewers (~1 h). Run it, or go to the report as it is?
 ~~~
 
 ### Round failed
+
+A 5-hour usage limit retries by itself (rounds.md §1). Say so in one line, no question:
+
+~~~markdown
+**PR !27887 · round 1 paused:** the 5-hour usage limit was reached. It resumes by itself at 6:45 pm; nothing was lost or posted.
+~~~
+
+A weekly limit or any other failure needs the user:
 
 ~~~markdown
 **PR !27887 · round 3 stopped:** 5 reviewers got no answer (weekly usage limit, resets Oct 30, 9 pm). Nothing from this round was posted.
@@ -306,8 +323,8 @@ Only for ❓ items and endings. One line, under 200 characters, the PR first, th
 | When | Message |
 |---|---|
 | decisions wait | `PR !27887: 2 decisions need you (round 2)` |
-| another round to approve | `PR !27887: round 2 done, nothing major open. Another round?` |
-| round failed | `PR !27887: round 3 stopped, usage limit reached. Nothing posted` |
+| another full round to approve | `PR !27887: 3 new commits after round 2. Review the whole change again?` |
+| round failed and needs you (not a 5-hour limit) | `PR !27887: round 3 stopped, weekly usage limit reached. Nothing posted` |
 | review finished | `PR !27887 ready to merge: risk 52, 3 fixed, 1 worth a glance` |
 | round limit hit | `PR !27887: round limit reached, 1 major finding open` |
 | waiting for approval | `PR !27887: checks green, waiting 2 h for approval by Jane Doe` |

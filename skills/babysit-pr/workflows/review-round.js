@@ -1,17 +1,17 @@
 export const meta = {
   name: 'pr-review-round',
-  description: 'One babysit-pr review round: tier-sized reviewer lenses, skeptics that try to refute each finding, verdicts on human comments',
+  description: 'One babysit-pr review round: tier-sized reviewer lenses, reports of one defect merged, skeptics that try to refute each finding, verdicts on human comments',
   whenToUse: 'Started by the babysit-pr skill once per review round, with args built from references/tiers.json',
   phases: [
     { title: 'Map', detail: 'split the PR into review portions (full rounds of tiers with portion lenses)' },
     { title: 'Review', detail: 'one reviewer per lens, and per portion where the tier asks for it' },
-    { title: 'Verify', detail: 'skeptics try to refute each finding; human comments get a verdict' },
+    { title: 'Verify', detail: 'reports of the same defect are merged, then skeptics try to refute each finding; human comments get a verdict' },
   ],
 }
 
 // args: {
 //   round, tierName, tier,                     tier = the entry from references/tiers.json
-//   scope,                                      'full' (whole PR, the tier's lenses) or 'delta' (commits since sinceSha, followUpLenses)
+//   scope,                                      'full' (whole PR, the tier's lenses) or 'delta' (only the commits since sinceSha, followUpLenses)
 //   pr: { id, title, webUrl, intent, score },
 //   repo: { worktree, mergeBase, headSha, sinceSha },   sinceSha = head reviewed last round, or null
 //   signals: { hitIds: [...], reasons: [...], destructive: [...] },
@@ -86,6 +86,24 @@ const BATCH_VERDICT = {
   },
   required: ['verdicts'],
 }
+const GROUPS = {
+  type: 'object',
+  properties: {
+    groups: {
+      type: 'array',
+      description: 'Only groups of two or more reports that describe one defect; leave out every report that stands alone',
+      items: {
+        type: 'object',
+        properties: {
+          members: { type: 'array', items: { type: 'integer', minimum: 0 }, description: 'The numbers of the reports that describe the same defect' },
+          cause: { type: 'string', description: 'One line: the cause they share' },
+        },
+        required: ['members', 'cause'],
+      },
+    },
+  },
+  required: ['groups'],
+}
 const HUMAN_VERDICT = {
   type: 'object',
   properties: {
@@ -100,15 +118,15 @@ const LENSES = {
   generalist:
     'Read the whole change once, end to end, and find anything that breaks its intent: logic errors, missed cases, callers left behind, wrong configuration, leftover debug code, a test that does not test what it claims.',
   correctness:
-    'Trace every changed function. Feed it the inputs that break code: null, empty, duplicates, boundaries, concurrent calls, time zones and clock changes, partial failure. Follow its error paths. Find every caller of a changed signature or behaviour (search for them) and check each still holds. Judge behaviour against the intent, not against the code\'s own comments.',
+    'Trace every changed function. Feed it the inputs that break code: null, empty, duplicates, boundaries, concurrent calls, time zones and clock changes, partial failure. Follow its error paths. Find every caller of a changed signature or behaviour (search for them) and check each still holds. Judge behaviour against the intent, not against the code\'s own comments. For each risky path you traced, check that a test would fail if the code were wrong; report a gap only where a bug is plausible, and name the test that would catch it.',
   'standards-spec':
     'Answer two questions and keep them apart. Standards: does the change follow the rules this repository writes down (the AGENTS.md and CLAUDE.md nearest each changed file, the domain vocabulary in CONTEXT.md, the ADRs the change touches)? Cite the rule for each finding. Spec: does it do what the intent, the specification (when there is one) and any linked work item ask - is every acceptance criterion met and its test real, is anything missing, anything added that nobody asked for, anything implemented wrongly, any decision ignored? Quote the intent or the AC for each finding.',
   'blast-radius':
     'Find what this change breaks outside the diff. Listing callers is not the job; find what a search will not show you: serialized and wire formats, database columns and migrations, generated clients, configuration and feature flags, other services or languages reading the same data, and deploy order (the previous release running against the new schema, or the new code against the old). Name the one fact the change is safe because of, then try to prove or disprove it by running something.',
-  tests:
-    'Decide whether the risky paths of this change are covered by tests that would fail if the change were wrong. Read the tests the change adds and the tests that exercise the code it changes. Report a gap only where a bug is plausible, and name the test that would catch it.',
   adversary:
     'Break this change. A finding counts only if you ran something that shows the wrong behaviour: a failing test, a repro script, command output. Report the command, what it printed, and what the intent requires instead. Leave out anything you did not run.',
+  fixes:
+    'Check every commit since the last round. For a commit that fixes an earlier finding: is the cause gone and not only the symptom, is the same mistake fixed everywhere else in the PR, would its test fail without the fix, and does it break anything it touches (callers, error paths, and the inputs that break code: null, empty, boundaries, concurrent calls)? Review a commit that does more than fix a finding like new code.',
   'data-migration':
     'Review every migration and data change: destructive operations, nullability and defaults on existing rows, backfills, locks on large tables, whether it can be rolled back, and whether the previous release still works against the new schema while the deploy rolls out.',
   security:
@@ -126,6 +144,10 @@ const delta = scope === 'delta' && Boolean(repo.sinceSha)
 
 // Only these lenses build or run tests; every other reviewer and every skeptic only reads.
 const RUNNING_LENSES = new Set(['adversary'])
+// Only these lenses judge the change against what was asked, so only they may read the linked work item.
+const INTENT_LENSES = new Set(['standards-spec', 'generalist'])
+// One skeptic checks a batch of findings: fewer when they are major, because each takes a closer look.
+const MAJORS_PER_SKEPTIC = 4
 const MINORS_PER_SKEPTIC = 6
 
 const signalsText = [
@@ -135,8 +157,14 @@ const signalsText = [
 const priorText = prior.length ? prior.map((p) => `- ${p.key} [${p.severity}] ${p.file}:${p.line} ${p.title} -> ${p.resolution}`).join('\n') : '(none)'
 const diffCmd = `git -C "${repo.worktree}" diff ${repo.mergeBase}..${repo.headSha}`
 
-function rules(label, canRun) {
+function rules(label, canRun, canLookUp = false) {
   return [
+    [
+      canLookUp
+        ? 'Read the linked work item when the intent above leaves open what was asked; look nothing else up outside the repository.'
+        : 'The intent above is all you need about the purpose of this change: do not look up tickets, wikis or anything else outside the repository.',
+      'Send lookups that do not depend on each other (several files, several searches) in one message, not one per turn.',
+    ].join(' '),
     canRun
       ? `Do not edit, stage or commit anything in ${repo.worktree}. Keep scratch files under ${scratch}/${label}. To build or run tests, use a checkout of your own, because parallel builds in one checkout collide: git -C "${repo.worktree}" worktree add --detach "${scratch}/${label}/wt" ${repo.headSha}, and remove it with git -C "${repo.worktree}" worktree remove --force "${scratch}/${label}/wt" when you are done. Run only what proves a point: the one test or test class that shows it (a filtered run), never a whole suite, and build at most once.`
       : `Read only: do not edit, stage or commit anything in ${repo.worktree}, and do not build, run tests or create checkouts. Read the code, and use git and search. Keep any scratch files under ${scratch}/${label}.`,
@@ -163,7 +191,7 @@ function scopeText() {
 
 // Only the lenses that judge the change against its spec get the acceptance criteria in their prompt; the
 // rest get the path, to read when a finding depends on what the change must do.
-const SPEC_LENSES = new Set(['standards-spec', 'generalist', 'tests'])
+const SPEC_LENSES = new Set(['standards-spec', 'generalist'])
 
 function specText(full) {
   if (!spec) return ''
@@ -174,7 +202,7 @@ function specText(full) {
   return `${where} Its acceptance criteria and decisions are what the change must do: ${acs}.${missing}`
 }
 
-function context(label, portion, canRun = false, fullSpec = false) {
+function context(label, portion, canRun = false, fullSpec = false, canLookUp = false) {
   return [
     `Pull request !${pr.id} "${pr.title}" (${pr.webUrl}), review round ${round}, ${tierName} tier (risk ${pr.score}/100).`,
     `Intent: ${pr.intent}`,
@@ -187,7 +215,7 @@ function context(label, portion, canRun = false, fullSpec = false) {
     `Risk signals: ${signalsText}.`,
     profileNotes ? `Repository notes:\n${profileNotes}` : '',
     `Raised in earlier rounds (repeat one only with new evidence, and say what is new):\n${priorText}`,
-    rules(label, canRun),
+    rules(label, canRun, canLookUp),
   ].filter(Boolean).join('\n\n')
 }
 
@@ -261,7 +289,7 @@ const humanPrompt = (h) =>
 
 agentsStarted += tasks.length + human.length
 const [reviews, humanVerdicts] = await Promise.all([
-  parallel(tasks.map((t) => () => agent(`${LENSES[t.lens]}\n\n${context(t.label, t.portion, RUNNING_LENSES.has(t.lens), SPEC_LENSES.has(t.lens))}`, { label: `review:${t.label}`, phase: 'Review', schema: FINDINGS, ...modelOpt(t.model), effort: tier.effort }))),
+  parallel(tasks.map((t) => () => agent(`${LENSES[t.lens]}\n\n${context(t.label, t.portion, RUNNING_LENSES.has(t.lens), SPEC_LENSES.has(t.lens), INTENT_LENSES.has(t.lens))}`, { label: `review:${t.label}`, phase: 'Review', schema: FINDINGS, ...modelOpt(t.model), effort: tier.effort }))),
   parallel(human.map((h) => () => agent(humanPrompt(h), { label: `comment:${h.threadId}`, phase: 'Verify', schema: HUMAN_VERDICT, ...modelOpt(tier.model), effort: tier.effort }))),
 ])
 
@@ -300,84 +328,119 @@ for (const finding of raw.sort((a, b) => rank(b.severity) - rank(a.severity))) {
 phase('Verify')
 
 const nits = merged.filter((f) => f.severity === 'nit')
-const serious = merged.filter((f) => rank(f.severity) >= rank('major'))
-const minors = merged.filter((f) => f.severity === 'minor')
-const skepticModels = [tier.model, tier.secondModel ?? tier.model]
+let findings = merged.filter((f) => f.severity !== 'nit')
 const findingText = (f) => `[${f.severity}] ${f.file}:${f.line}${f.endLine ? `-${f.endLine}` : ''} - ${f.title}\nClaim: ${f.claim}\nImpact: ${f.impact}\nEvidence given: ${f.evidence}`
 
-// Major and blocker findings: tier.refuters independent skeptics each, one question apiece.
-const refutePrompt = (f, k) =>
-  [
-    `Try to refute this finding from a review of pull request !${pr.id}. You are a skeptic: it stands only if it survives your own check.`,
-    SKEPTICS[k % SKEPTICS.length],
-    `Finding ${findingText(f)}`,
-    context(`skeptic-${slug(f.title)}-${k + 1}`),
-  ].join('\n\n')
+// Reviewers work alone, so one defect comes back several times, at other lines and in other words, where
+// the merge above cannot see it. One reader groups the reports by cause; each group becomes one finding.
+if (tasks.length > 1 && findings.length > 1) {
+  agentsStarted += 1
+  const grouped = await agent(
+    [
+      `Several reviewers read pull request !${pr.id} "${pr.title}" independently, so the same defect may be reported more than once: at different lines, in different files, in different words. Group the reports below that describe one defect, meaning they share a cause and one fix would settle all of them. Reports about the same file or the same topic are not one defect unless one fix settles both. Decide from the text alone: do not read code and do not run anything.`,
+      findings.map((f, i) => `Report ${i}: [${f.severity}] ${f.file}:${f.line} - ${f.title}\nClaim: ${f.claim}\nSuggested fix: ${f.suggestedFix}`).join('\n\n'),
+    ].join('\n\n'),
+    { label: 'group', phase: 'Verify', schema: GROUPS, model: 'sonnet', effort: 'medium' },
+  )
+  if (!grouped) log('Grouping the reports failed, so duplicates are not merged this round.')
+  const taken = new Set()
+  const groups = []
+  for (const g of grouped?.groups ?? []) {
+    const members = [...new Set(g.members)].filter((i) => Number.isInteger(i) && i >= 0 && i < findings.length && !taken.has(i))
+    if (members.length < 2) continue
+    members.forEach((i) => taken.add(i))
+    groups.push(members)
+  }
+  const distinct = findings.filter((_, i) => !taken.has(i))
+  for (const members of groups) {
+    const [lead, ...rest] = members.map((i) => findings[i]).sort((a, b) => rank(b.severity) - rank(a.severity))
+    distinct.push({
+      ...lead,
+      lenses: [...new Set([lead, ...rest].flatMap((f) => f.lenses))],
+      oneWay: [lead, ...rest].some((f) => f.oneWay),
+      alsoAt: [...new Set(rest.map((f) => `${f.file}:${f.line}`))].filter((at) => at !== `${lead.file}:${lead.line}`),
+      evidence: [lead.evidence, ...rest.map((f) => `Also reported by ${f.lenses.join(', ')} at ${f.file}:${f.line}: ${f.evidence}`)].join('\n\n'),
+    })
+  }
+  findings = distinct
+}
+const duplicatesMerged = raw.filter((f) => f.severity !== 'nit').length - findings.length
 
-// Minor findings: one skeptic checks a batch, asking all three questions of each.
-const batchPrompt = (batch, b) =>
+// Skeptics: each finding gets one, who asks all three questions. Major and blocker findings go to the
+// tier's model in small batches, minor ones to the cheaper skeptic model. A blocker gets a second,
+// independent skeptic, because dropping one wrongly costs the most.
+const serious = findings.filter((f) => rank(f.severity) >= rank('major'))
+const minors = findings.filter((f) => f.severity === 'minor')
+const blockers = serious.filter((f) => f.severity === 'blocker')
+const chunks = (list, size) => Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, (i + 1) * size))
+const batches = [
+  ...chunks(serious, MAJORS_PER_SKEPTIC).map((items, i) => ({ items, label: `majors-${i + 1}`, model: tier.model, effort: tier.effort })),
+  ...chunks(minors, MINORS_PER_SKEPTIC).map((items, i) => ({ items, label: `minors-${i + 1}`, model: tier.skepticModel ?? tier.model, effort: 'high' })),
+]
+const questions = SKEPTICS.map((q, k) => `${k + 1}. ${q}`).join('\n')
+
+const batchPrompt = (batch) =>
   [
     `Try to refute each of these findings from a review of pull request !${pr.id}. You are a skeptic: a finding stands only if it survives your own check. Ask of each, in turn:`,
-    SKEPTICS.map((s, k) => `${k + 1}. ${s}`).join('\n'),
+    questions,
     'Return one verdict per finding, with its index.',
-    batch.map((f, i) => `Finding ${i}: ${findingText(f)}`).join('\n\n'),
-    context(`skeptic-minors-${b + 1}`),
+    batch.items.map((f, i) => `Finding ${i}: ${findingText(f)}`).join('\n\n'),
+    context(`skeptic-${batch.label}`),
   ].join('\n\n')
 
-const batches = []
-for (let i = 0; i < minors.length; i += MINORS_PER_SKEPTIC) batches.push(minors.slice(i, i + MINORS_PER_SKEPTIC))
+const secondPrompt = (f) =>
+  [
+    `Try to refute this finding from a review of pull request !${pr.id}. It is rated a blocker, so you check it on your own, apart from the first skeptic. It stands only if it survives your own check. Ask, in turn:`,
+    questions,
+    `Finding ${findingText(f)}`,
+    context(`skeptic-${slug(f.title)}`),
+  ].join('\n\n')
 
-const checked = tier.refuters > 0
-if (checked) agentsStarted += serious.length * tier.refuters + batches.length
-const [seriousVotes, batchVerdicts] = checked
+const checked = Boolean(tier.skeptics)
+if (checked) agentsStarted += batches.length + blockers.length
+const [batchVerdicts, secondVotes] = checked
   ? await Promise.all([
-      parallel(serious.map((f) => () =>
-        parallel(Array.from({ length: tier.refuters }, (_, k) => () =>
-          agent(refutePrompt(f, k), { label: `skeptic:${slug(f.title)}-${k + 1}`, phase: 'Verify', schema: VERDICT, ...modelOpt(skepticModels[k % 2]), effort: tier.effort }),
-        )))),
-      parallel(batches.map((batch, b) => () =>
-        agent(batchPrompt(batch, b), { label: `skeptic:minors-${b + 1}`, phase: 'Verify', schema: BATCH_VERDICT, ...modelOpt(tier.skepticModel ?? tier.model), effort: 'high' }))),
+      parallel(batches.map((batch) => () =>
+        agent(batchPrompt(batch), { label: `skeptic:${batch.label}`, phase: 'Verify', schema: BATCH_VERDICT, ...modelOpt(batch.model), effort: batch.effort }))),
+      parallel(blockers.map((f) => () =>
+        agent(secondPrompt(f), { label: `skeptic:blocker-${slug(f.title)}`, phase: 'Verify', schema: VERDICT, ...modelOpt(tier.secondModel ?? tier.model), effort: tier.effort }))),
     ])
   : [[], []]
 
 const failedSkeptics = []
 const judged = []
 if (!checked) {
-  for (const f of [...serious, ...minors]) judged.push({ f, votes: null })
+  for (const f of findings) judged.push({ f, votes: null })
 } else {
-  serious.forEach((f, i) => {
-    const votes = (seriousVotes[i] ?? []).filter(Boolean)
-    if (votes.length < tier.refuters) failedSkeptics.push(`skeptics of "${f.title}"`)
-    judged.push({ f, votes, majority: tier.refuteMajority })
-  })
   batches.forEach((batch, b) => {
     const verdicts = batchVerdicts[b]?.verdicts ?? []
-    batch.forEach((f, i) => {
-      const v = verdicts.find((x) => x.index === i)
-      if (!v) failedSkeptics.push(`skeptic of "${f.title}"`)
-      judged.push({ f, votes: v ? [v] : [], majority: 1 })
+    batch.items.forEach((f, i) => {
+      const votes = [verdicts.find((v) => v.index === i)]
+      if (f.severity === 'blocker') votes.push(secondVotes[blockers.indexOf(f)])
+      if (votes.some((v) => !v)) failedSkeptics.push(`skeptic of "${f.title}"`)
+      judged.push({ f, votes: votes.filter(Boolean) })
     })
   })
 }
-if (failedSkeptics.length) return invalid('skeptics', failedSkeptics, { unverified: merged.length })
+if (failedSkeptics.length) return invalid('skeptics', failedSkeptics, { unverified: findings.length })
 
 const kept = []
 const dropped = []
-for (const { f, votes, majority } of judged) {
+for (const { f, votes } of judged) {
   if (votes === null) {
     kept.push({ ...f, verification: 'not checked by skeptics at this tier' })
     continue
   }
-  const refuting = votes.filter((v) => v.refuted)
-  if (refuting.length >= majority) {
-    dropped.push({ title: f.title, file: f.file, line: f.line, lenses: f.lenses, reason: refuting.map((v) => v.reason).join(' / ') })
+  // Refuted only when every skeptic who checked it says so: the one, or both for a blocker.
+  const upheld = votes.filter((v) => !v.refuted)
+  if (!upheld.length) {
+    dropped.push({ title: f.title, severity: f.severity, file: f.file, line: f.line, lenses: f.lenses, reason: votes.map((v) => v.reason).join(' / ') })
     continue
   }
-  const upheld = votes.filter((v) => !v.refuted)
   const counts = {}
   upheld.forEach((v) => { counts[v.severity] = (counts[v.severity] ?? 0) + 1 })
   const severity = Object.keys(counts).sort((a, b) => counts[b] - counts[a] || rank(b) - rank(a))[0] ?? f.severity
-  const finding = { ...f, severity, verification: `${upheld.length} of ${votes.length} skeptics upheld it`, skepticNotes: upheld.map((v) => v.reason).join(' / ') }
+  const finding = { ...f, severity, verification: votes.length === 1 ? 'upheld by a skeptic' : `upheld by ${upheld.length} of ${votes.length} skeptics`, skepticNotes: upheld.map((v) => v.reason).join(' / ') }
   if (severity === 'nit') nits.push(finding)
   else kept.push(finding)
 }
@@ -395,7 +458,10 @@ kept.sort((a, b) => rank(b.severity) - rank(a.severity) || a.file.localeCompare(
 kept.forEach((f, i) => { f.id = `R${round}-F${i + 1}` })
 humanResults.forEach((r) => { r.findingId = kept.find((f) => f.humanThreadId === r.threadId)?.id ?? null })
 
-const clean = !kept.some((f) => rank(f.severity) >= rank(tier.severityBar))
+// A round over the whole change is clean below the tier's bar. A round over the fixes is clean below
+// major: a minor in a fix is fixed and listed, and never buys another round.
+const bar = delta ? 'major' : tier.severityBar
+const clean = !kept.some((f) => rank(f.severity) >= rank(bar))
 log(`Round ${round} (${delta ? 'delta' : 'full'}): ${kept.length} findings kept, ${dropped.length} refuted, ${nits.length} nits, ${clean ? 'clean' : 'not clean'}.`)
 
 return {
@@ -412,7 +478,7 @@ return {
     agents: agentsStarted,
     reviewers: tasks.map((t) => t.label),
     portions: portions ? portions.map((p) => p.name) : [],
-    skepticsPerMajorFinding: tier.refuters,
-    minorSkeptics: checked ? batches.length : 0,
+    skeptics: checked ? batches.length + blockers.length : 0,
+    duplicatesMerged,
   },
 }

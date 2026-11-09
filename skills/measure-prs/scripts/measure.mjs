@@ -32,7 +32,7 @@ const CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude');
 const LEDGER_DIR = join(CONFIG_DIR, 'pr-metrics');
 const PR_HOST = join(HERE, '..', '..', 'pr-host', 'scripts', 'pr-host.mjs');
 const SEVERITIES = ['nit', 'minor', 'major', 'blocker'];
-const LENSES = ['generalist', 'correctness', 'standards-spec', 'blast-radius', 'tests', 'adversary', 'data-migration', 'security'];
+const LENSES = ['generalist', 'correctness', 'standards-spec', 'blast-radius', 'fixes', 'tests', 'adversary', 'data-migration', 'security'];
 const MARKER = /<!-- pr-metrics (\{.*?\}) -->/g;
 
 function parseArgs(argv) {
@@ -126,14 +126,14 @@ function jsonlFiles(dir) {
 }
 
 // What kind of agent wrote a transcript: the main conversation, a review-workflow agent by its label
-// (review:<lens>, skeptic:…, comment:…, map), or another subagent such as the fixer.
+// (review:<lens>, skeptic:…, comment:…, map, group), or another subagent such as the fixer.
 function groupOf(file, mainFile) {
   if (file === mainFile) return 'main';
   const meta = tryJson(file.replace(/\.jsonl$/, '.meta.json')) ?? {};
   const label = String(meta.description ?? '');
   if (meta.agentType === 'workflow-subagent' || /[\\/]workflows[\\/]/.test(file)) {
     const head = label.split(':')[0];
-    return ['review', 'skeptic', 'comment', 'map'].includes(head) ? head : 'workflow';
+    return ['review', 'skeptic', 'comment', 'map', 'group'].includes(head) ? head : 'workflow';
   }
   return /fix|decision/i.test(label) ? 'fixer' : 'subagent';
 }
@@ -210,6 +210,7 @@ export function roundRecord(base, result, fixers) {
     reviewers: result.coverage?.reviewers?.length ?? null,
     found,
     refuted: (result.dropped ?? []).length,
+    duplicates: result.coverage?.duplicatesMerged ?? 0,
     nits: (result.nits ?? []).length,
     human,
     lenses,

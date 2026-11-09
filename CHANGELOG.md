@@ -2,6 +2,35 @@
 
 Each `## <version>` section becomes the notes of the GitHub release `v<version>`. Newest first.
 
+## 4.4.0
+
+Reviews cost far less and interrupt you less: reports of one defect become one finding, each finding is
+checked once, follow-up rounds only verify the fixes, and a round stopped by a 5-hour usage limit resumes
+by itself. Nothing to do but update; a PR already in review carries on under the new rules.
+
+- **One finding per defect.** Reviewers work alone and report the same defect several times, at different
+  lines and in different words. A grouping step merges those reports before anything is checked or posted:
+  one thread, one decision, and the thread names the other places.
+- **One skeptic per finding.** Major findings are checked in small batches on the tier's model, minor ones
+  on the cheaper skeptic model, and a blocker by a second skeptic. Three skeptics per major finding (the
+  old high and critical tiers) dropped nothing in the runs measured. A major or blocker finding that a
+  skeptic disproves is listed under "worth a glance" in the report.
+- **Follow-up rounds verify the fixes.** One reviewer checks the fix commits, plus the adversary at
+  critical. A minor found there is fixed and listed, and never causes another round. The review is done
+  after a clean round: no tier forces a second round any more, and none runs when nothing changed since
+  the last one. Critical stops at 4 rounds (was 6).
+- **No question before a follow-up round.** You are asked only before a second full round, which happens
+  when someone else pushed or the tier rose.
+- **Test coverage is part of the correctness review** instead of a reviewer of its own.
+- **A round stopped by a 5-hour usage limit resumes by itself** after the reset. A weekly limit still asks
+  you.
+- Reviewers and skeptics no longer look up tickets (only the reviewer that judges the intent may read the
+  linked work item), and they send independent lookups together.
+- New commits at the merge gate open a finished review again; before, `babysit.mjs args` refused.
+- `tiers.json`: `refuters`, `refuteMajority`, `minRounds` and `cleanRoundsNeeded` are gone, `skeptics`
+  (true or false) is new, and the `tests` lens gives way to `fixes` for follow-up rounds. `measure-prs`
+  records how many duplicate reports a round merged.
+
 ## 4.3.2
 
 The scripts work when the skills are installed as personal skills (`install.ps1` junctions or symlinks).

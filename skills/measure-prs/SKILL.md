@@ -38,8 +38,8 @@ session transcripts and recorded as weighted input-token equivalents (cache writ
    say how many rounds are recorded and stop there rather than guessing.
 5. **Propose.** For each signal, one proposal: the change, the numbers behind it, what it would save,
    and what it risks. Proposals go to one of two places:
-   - **The tiers** (`<base>/../babysit-pr/references/tiers.json` in the skills repository): rounds,
-     lenses, `followUpLenses`, skeptic counts and models, effort, `severityBar`.
+   - **The tiers** (`<base>/../babysit-pr/references/tiers.json` in the skills repository): lenses,
+     `followUpLenses`, `skeptics` and their models, effort, `severityBar`, `maxRounds`.
    - **The repository profile** (the setup-repo skill edits it): danger-map floors and caps when a
      tier's PRs keep coming back clean or keep failing, checks, conventions.
    Recommend at most three, strongest evidence first. Change nothing yourself: the user decides, and a

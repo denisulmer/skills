@@ -99,12 +99,16 @@ Per round:
    pushed and green before the review starts. No build check at all (plain git, or a host that runs no
    pipeline for this PR): `checks.mjs run` (rounds.md §3) in the worktree instead. The full suite runs in
    the pipeline only, never locally. Review-only mode: don't wait; note a red build in the round summary.
-3. **Review.** `babysit.mjs args` builds the round's inputs and picks its scope (`full` in round 1,
-   `delta` after that); start `Workflow` with them (rounds.md §1). The user's invocation of
-   this skill is their opt-in to the workflow, and the tier sets its size: a full high or critical round
-   runs one to two dozen agents, a delta round a handful. It runs in the background; wait for its
-   notification. It returns verified findings, nits, what the skeptics refuted, and verdicts on people's
-   comments, or `valid: false` when agents failed: then stop the round (rounds.md §1) and post nothing.
+3. **Review.** `babysit.mjs args` builds the round's inputs and picks its scope: `full` in round 1,
+   `delta` (a follow-up round over the fix commits only) after that. When it prints `ask: true`, the
+   round would be a second full one (someone else pushed, or the tier rose): send the Another round
+   question from style.md and wait for the user's yes. Then start `Workflow` with the inputs
+   (rounds.md §1). The user's invocation of this skill is their opt-in to the workflow, and the tier
+   sets its size: a full high or critical round runs about a dozen agents, a follow-up round one to
+   three. It runs in the background; wait for its notification. It returns verified findings (reports
+   of one defect already merged into one), nits, what the skeptics refuted, and verdicts on people's
+   comments, or `valid: false` when agents failed: then post nothing and follow rounds.md §1, where a
+   5-hour usage limit retries by itself.
 4. **Record.** `babysit.mjs record`: one inline thread per finding, a reply on each person's thread.
 5. **Fix** (owner mode). One fixer subagent per round, briefed with
    [references/fixer.md](references/fixer.md). It commits one finding per commit and returns a decision
@@ -113,14 +117,14 @@ Per round:
    line, with a push notification. Once answered, a second fixer pass carries out the decisions; push,
    reply, resolve.
 7. **Close.** `babysit.mjs summary` records the metrics and posts the round summary.
-8. **Stop or go on.** `babysit.mjs state` applies this rule as `next`. A round is clean when it kept no
-   finding at or above the tier's `severityBar`.
-   - Done when the round number ≥ `minRounds` and the last `cleanRoundsNeeded` rounds were clean.
-   - At `maxRounds` without that: stop, notify, and send the Round limit message (another round,
-     accept as it is, or stop).
-   - Before a round past `minRounds`, send the Another round question from style.md and wait for the
-     user's yes. A full high round costs hours and a large share of a weekly usage limit.
-   - Otherwise start the next round.
+8. **Stop or go on.** `babysit.mjs state` applies this rule as `next`. A full round is clean when it
+   kept no finding at or above the tier's `severityBar`. A follow-up round is clean when it kept no
+   major or blocker finding: a minor in a fix is fixed and listed, and never buys another round.
+   - Done after a clean round, and after an unclean one that changed nothing (every finding declined
+     or decided without a change), because there is no fix to verify.
+   - Otherwise the next round is a follow-up round over the fix commits. Start it without asking.
+   - At `maxRounds` without a clean round: stop, notify, and send the Round limit message (another
+     round, accept as it is, or stop).
 
 ## 3. Report
 
@@ -134,7 +138,7 @@ finished" push notification.
 Send the Merge question from style.md: outcome counts, anything open, approvals a person still owes
 (`approval` in merge-pr's preflight), the 👀 list, and "merge?". Only an
 explicit yes here counts. If new commits or comments arrive while you wait, run another round when they
-change code; answer comments that don't.
+change code (`args` opens the finished review again for them); answer comments that don't.
 
 ## 5. Merge
 
@@ -157,5 +161,5 @@ thread; the description and the merge belong to the author.
 ## Notifications
 
 Use `PushNotification` (load it with ToolSearch `select:PushNotification` when it is deferred) only for
-the events in style.md's table: decisions waiting, another round to approve, round failed, review
+the events in style.md's table: decisions waiting, another full round to approve, round failed, review
 finished, round limit hit, waiting for approval, merge stuck, merged.
