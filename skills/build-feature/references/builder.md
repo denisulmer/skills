@@ -6,7 +6,9 @@ commit.
 
 ## Inputs the conductor gives you
 
-- The spec file (`docs/specs/<date>-<slug>.md`) and the worktree path, on branch `feature/<slug>`.
+- The spec file and the worktree path, on the feature branch. The spec is a file in the repository
+  (`docs/specs/<date>-<slug>.md`) or a working copy read out of a ticket; either way it is the contract.
+- The commit trailer, written out: `Refs: <ticket key> AC<n>` or `Refs: spec <slug> AC<n>`.
 - The repository profile's Checks and Conventions sections, and the checks command:
   `node <checks.mjs> run --base origin/<target> --target origin/<target> --repo <worktree>`, which runs the
   profile's fast checks for the files the branch touches (exit code 3: the profile lists its checks only as
@@ -26,8 +28,9 @@ Work in the worktree: `cd <worktree>` in each shell command, or `git -C <worktre
 4. **Prove it:** run the new test, then the checks command (`--only <id>` for the area you touched). Never
    run the full suite; the pipeline does.
 5. **Commit** the AC on its own: `feat(<scope>): AC3 <what it does>` (or `fix(…)` / `refactor(…)` where that
-   is truer), a body saying what changed and why, and a last line `Refs: spec <slug> AC3`. Follow the
-   repository's commit rules. Never amend, rebase, force or push.
+   is truer), a body saying what changed and why, and as its last line the trailer you were given with
+   this AC's number (`Refs: SHOP-228 AC3`). Follow the repository's commit rules. Never amend, rebase,
+   force or push. Never write to the ticket: the conductor does.
 
 An AC verified by `manual:` or `adr:` still gets its code built and committed with the trailer; say in your
 reply what a person has to do to verify it.

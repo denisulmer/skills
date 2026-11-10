@@ -94,7 +94,9 @@ async function main() {
   if (result !== undefined) console.log(JSON.stringify(result, null, 2));
 }
 
+// A wrong call names what was wrong and where the commands are listed; the whole list only comes when asked
+// for, because an error that ends in forty lines of help hides its own first line.
 main().catch((error) => {
-  console.error(error instanceof UsageError ? `${error.message}\n\n${USAGE}` : error.message);
+  console.error(error instanceof UsageError ? `${error.message}\n(run "pr-host help" for the commands)` : error.message);
   process.exit(1);
 });

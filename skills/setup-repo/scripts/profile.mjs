@@ -105,7 +105,10 @@ export function section(text, heading) {
 export function parseProfile(text, source, file) {
   const rules = jsonBlock(text, 'rules', file);
   if (!rules) throw new Error(`${file} has no \`\`\`json rules block`);
-  return { name: text.match(/^name:\s*(.+)$/m)?.[1]?.trim() ?? file, source, file, text, rules, checks: jsonBlock(text, 'checks', file) };
+  // `calibrated: false` in the front matter marks a profile draft.mjs wrote and nobody has calibrated yet.
+  const front = text.replace(/\r\n/g, '\n').match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '';
+  const calibrated = !/^calibrated:\s*false\b/m.test(front);
+  return { name: text.match(/^name:\s*(.+)$/m)?.[1]?.trim() ?? file, source, file, text, rules, checks: jsonBlock(text, 'checks', file), calibrated };
 }
 
 export function loadProfile(repo, base, profileOpt) {

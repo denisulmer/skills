@@ -1,39 +1,54 @@
 ---
 name: spec-feature
-description: Turn a feature idea into an approved spec through a conversation - one question at a time until every open point is settled - with numbered, testable acceptance criteria, the user's decisions (one-way doors decided up front), a plan, and a risk forecast, saved as docs/specs/<date>-<slug>.md on a new feature branch; once the user approves it, build-feature builds it and babysit-pr takes it to the merge gate. Use when the user wants to build, add or change a feature and it isn't specified yet, says "spec this", "let's plan X", "I want to build", "write a spec", or starts the feature-to-merge pipeline. Not for a bug fix with an obvious cause or a change already specified.
+description: Turn a ticket or a feature idea into an approved spec through a conversation, one question at a time - testable acceptance criteria, the user's decisions (one-way doors decided up front), a plan and a risk forecast. The spec goes into the ticket's description as its own section, with one sub-task per criterion, or into docs/specs/ when there is no ticket; then build-feature builds it. Use when the user says "spec this", "work on <ticket>", "let's plan X", "I want to build…" or starts the ticket-to-merge pipeline. Not for a bug fix with an obvious cause or a change already specified.
 ---
 
 # Spec a feature
 
 ```
-spec-feature "<idea>"
- 1 Explore    read the code, the domain words, the profile; ask nothing the code answers
+spec-feature <ticket> | "<idea>"
+ 1 Explore    the ticket, the code, the domain words, the profile; ask nothing they answer
  2 Grill      one question at a time until no open point is left
- 3 Draft      docs/specs/<date>-<slug>.md on feature/<slug>: ACs, non-goals, decisions, plan
+ 3 Draft      the spec: acceptance criteria, non-goals, decisions, plan
  4 Forecast   score-pr on the plan → tier; every one-way door becomes a decision
  5 Check      medium tier and up: one skeptic reads the spec for gaps
- 6 Approve    the user's yes in chat → status approved → build-feature
+ 6 Approve    the user's yes → the ticket gets its Specification section and its sub-tasks → build-feature
 ```
 
 `<signals>` = `node <base>/../score-pr/scripts/signals.mjs`, `<score>` = `node <base>/../score-pr/scripts/score.mjs`,
-`<measure>` = `node <base>/../measure-prs/scripts/measure.mjs`. The spec's shape is
-[references/spec-format.md](references/spec-format.md); read it before drafting.
+`<measure>` = `node <base>/../measure-prs/scripts/measure.mjs`, `<ticket>` = `node <base>/../sync-ticket/scripts/ticket.mjs`.
+The spec's shape is [references/spec-format.md](references/spec-format.md); read it before drafting.
+
+**Where the spec lives.** With a ticket, in the ticket: the sync-ticket skill
+(`<base>/../sync-ticket/SKILL.md`) reads it and writes it, and the working copy is `<scratch>/spec.md`,
+never committed. Without a ticket, or without tracker tools in this session, in the repository:
+`docs/specs/<YYYY-MM-DD>-<slug>.md`, committed on the feature branch. Everything else is the same.
 
 ## 1. Explore
 
 Start the clock: note the time (the phase's metrics start here) and make a scratch directory
 `spec-<slug>` in the session scratchpad.
 
-Before asking anything, read what the repository already says: `CONTEXT.md` and the agent guides
-(`AGENTS.md`, `CLAUDE.md`), ADRs that touch the area, the code the idea would change and its tests, and the
-repository profile (`<signals> --which-profile --base origin/<default branch> --repo <repo>`), whose
-judgment notes name this repo's one-way doors. Use the repository's domain words from here on.
+1. **The ticket,** when the argument is a key or a URL, or the idea names one: read it as sync-ticket's
+   Reading a ticket says. What the stakeholder wrote is the request; you never change it. A ticket that
+   already has an approved Specification goes straight to build-feature; a draft is where you continue.
+2. **The repository:** `CONTEXT.md` and the agent guides (`AGENTS.md`, `CLAUDE.md`), ADRs that touch the
+   area, the code the request would change and its tests.
+3. **The profile:** `<signals> --which-profile --base origin/<default branch> --repo <repo>`. Its judgment
+   notes name this repo's one-way doors. None: run setup-repo's quick setup first
+   (`<base>/../setup-repo/SKILL.md`); it asks nothing.
+
+Then tell the user in one line what you are working from, so nothing is a surprise later:
+
+`Spec for SHOP-228 (Jira, through the Atlassian connector) · profile contoso-shop (drafted automatically, not calibrated) · the spec goes into the ticket's description, one sub-task per acceptance criterion.`
+
+Use the repository's domain words from here on.
 
 ## 2. Grill
 
 Ask the user one question at a time, each answerable in a line, until nothing is open. The user's
-attention is the scarce resource: never ask what the code, the docs or a sensible default answers; say
-the default you took instead and move on.
+attention is the scarce resource: never ask what the ticket, the code, the docs or a sensible default
+answers; say the default you took instead and move on.
 
 - **Use AskUserQuestion** for each question: two to four options, the recommended one first and marked,
   each with what it costs. Free-text questions only when options would be guesses.
@@ -48,13 +63,15 @@ the default you took instead and move on.
 ## 3. Draft
 
 1. **Branch and worktree.** `git -C <repo> fetch origin <default branch>`, then
-   `git -C <repo> worktree add -b feature/<slug> <repo>/../<repo name>-<slug> origin/<default branch>`.
-   Work there for everything that follows; never in a checkout with uncommitted changes.
-2. **Write** `docs/specs/<YYYY-MM-DD>-<slug>.md` in the shape of spec-format.md, status `draft`:
+   `git -C <repo> worktree add -b feature/<KEY>-<slug> <repo>/../<repo name>-<slug> origin/<default branch>`
+   (`feature/<slug>` without a ticket). Work there for everything that follows; never in a checkout with
+   uncommitted changes.
+2. **Write the spec** in the shape of spec-format.md, status `draft`, to `<scratch>/spec.md` with
+   `ticket: <KEY>` in its front matter, or to `docs/specs/<YYYY-MM-DD>-<slug>.md` without a ticket:
    - acceptance criteria as observable statements, each with `· *verified by*`; prefer `test`;
    - every answer from the grilling under Decisions, one-way doors marked 🚪 with the user's name;
    - the Plan as the files or modules you expect to change, from reading the code.
-3. Don't commit yet.
+3. Don't commit yet, and don't write to the ticket yet.
 
 ## 4. Forecast
 
@@ -81,18 +98,22 @@ skip this step.
 ## 6. Approve
 
 Send the user, in one message: the title, the ACs (one line each), the decisions (🚪 first), the forecast
-tier, and what happens next ("Approve, and build-feature builds it AC by AC, opens a draft PR and
-babysit-pr reviews it; you hear from me at decisions and at the merge question."). Ask for approval with
+tier, and what happens next ("Approve, and the ticket gets this as its Specification section with one
+sub-task per criterion; build-feature builds it criterion by criterion, opens a draft PR and babysit-pr
+reviews it; you hear from me at decisions and at the merge question."). Ask for approval with
 AskUserQuestion: approve, or change something.
 
 Only an explicit approval in this chat counts. Then:
 
 1. Set `status: approved` and `approved: <date> by <user's name>`; `Open questions` says `None.`
-2. Commit the spec alone on the branch: `docs(spec): <title>`, body with the forecast line.
-3. Record the phase: `<measure> phase --name spec --repo <worktree> --branch feature/<slug> --started <step 1's time> --scratch <scratch>`.
+2. **With a ticket:** write the Specification section and create the sub-tasks, as sync-ticket's Writing
+   the Specification section and Sub-tasks say. Nothing is committed.
+   **Without:** commit the spec alone on the branch: `docs(spec): <title>`, body with the forecast line.
+3. Record the phase: `<measure> phase --name spec --repo <worktree> --branch <the branch> --started <step 1's time> --scratch <scratch>`.
    A failing metrics script never blocks; say so in one line.
-4. Run the **build-feature** skill with the spec's path and the worktree. The user chose the chain to run
-   on its own from here to babysit-pr's merge question.
+4. Run the **build-feature** skill with the ticket (or the spec's path) and the worktree. The user chose
+   the chain to run on its own from here to babysit-pr's merge question.
 
-When the user changes something instead, edit the spec and ask again. When the user stops, leave the
-branch and the draft as they are and say where they are.
+When the user changes something instead, edit the spec and ask again. When the user stops before
+approving, keep the work: with a ticket, write the section as it is (its status line says `draft`);
+without, leave the branch and the file. Say where it is.

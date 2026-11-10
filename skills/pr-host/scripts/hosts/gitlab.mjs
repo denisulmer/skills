@@ -465,7 +465,7 @@ async function putMerge(c, mr, payload) {
 export const commands = {
   async context(c) {
     const self = await me(c);
-    return { platform, host: c.host, projectPath: c.projectPath, prId: c.prId ?? null, prWebUrl: c.prId ? prWebUrl(c) : null, repoWebUrl: repoWebUrl(c), me: self };
+    return { platform, host: c.host, projectPath: c.projectPath, prId: c.prId ?? null, prWebUrl: c.prId ? prWebUrl(c) : null, repoWebUrl: repoWebUrl(c), limits: { description: DESCRIPTION_LIMIT }, me: self };
   },
 
   async find(c, _pos, opts) {

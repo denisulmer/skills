@@ -14,6 +14,8 @@
 //   node measure.mjs escapes --repo <checkout> [--branch origin/<default>] [--since YYYY-MM-DD] [--limit 300]
 //   node measure.mjs escape  --repo <checkout> --pr <id|url> --fix <sha> --confirm|--dismiss [--note "…"]
 //   node measure.mjs report [--repo <checkout> | --all] [--since YYYY-MM-DD] [--json]
+//   node measure.mjs cost   --repo <checkout> --pr <id> [--pr-url <url>]      what a PR's rounds cost so far
+//   node measure.mjs agents --scratch <dir> | --session <id>                  a session's rounds, agent by agent
 //
 // `round` reads <scratch>/round-<n>-result.json (the review workflow's result) and every
 // <scratch>/round-<n>-fixer*.json (the fixer's JSON block). Tokens come from the Claude Code session
@@ -205,9 +207,16 @@ export function countTokens({ scratch, session, started, ended }) {
 // ---------------------------------------------------------------------------------------------
 // Records
 
+// The option letter of a recommendation ("A, because …") or a choice ("1A", "A: keep it", { option: "A" }).
+const letterOf = (value) => {
+  if (value && typeof value === 'object') return value.option ?? null;
+  const m = String(value ?? '').trim().match(/^\d*([A-Z])(?![a-z])|\(option ([A-Z])\)/);
+  return m?.[1] ?? m?.[2] ?? null;
+};
+
 const lensOf = (label) => (/^comment/.test(label) ? 'comment' : LENSES.filter((l) => label === l || label.startsWith(`${l}-`)).sort((a, b) => b.length - a.length)[0] ?? label);
 
-export function roundRecord(base, result, fixers) {
+export function roundRecord(base, result, fixers, choices = null) {
   const found = Object.fromEntries(SEVERITIES.slice(1).map((s) => [s, 0]));
   const lenses = {};
   const bump = (label, field) => { const l = (lenses[lensOf(label)] ??= { kept: 0, refuted: 0 }); l[field]++; };
@@ -220,6 +229,13 @@ export function roundRecord(base, result, fixers) {
   for (const h of result.human ?? []) human[h.verdict] = (human[h.verdict] ?? 0) + 1;
   const outcomes = { fixed: 0, declined: 0, escalate: 0 };
   for (const fixer of fixers) for (const r of fixer?.results ?? []) outcomes[r.decision] = (outcomes[r.decision] ?? 0) + 1;
+  // A decision counts as recommended or overridden when both letters are known: the fixer's and the user's.
+  const decided = { asRecommended: 0, overridden: 0 };
+  for (const r of fixers.flatMap((fixer) => fixer?.results ?? []).filter((x) => x.decision === 'escalate')) {
+    const recommended = letterOf(r.recommendation);
+    const chosen = letterOf(choices?.[r.id]);
+    if (recommended && chosen) decided[recommended === chosen ? 'asRecommended' : 'overridden']++;
+  }
   return {
     ...base,
     kind: 'round',
@@ -237,6 +253,7 @@ export function roundRecord(base, result, fixers) {
     fixed: outcomes.fixed,
     declined: outcomes.declined,
     escalated: outcomes.escalate,
+    decided,
     failed: result.valid === false ? (result.failed ?? []).length : 0,
   };
 }
@@ -279,7 +296,7 @@ function cmdRound(opts) {
     : [];
   const base = { ...baseRecord(opts, 'round'), round: n, scope: opts.scope ?? null };
   const tokens = countTokens({ scratch: opts.scratch, session: opts.session, started: base.started, ended: base.ended });
-  const record = { ...roundRecord(base, result, fixers), tokens: compactTokens(tokens) };
+  const record = { ...roundRecord(base, result, fixers, tryJson(join(opts.scratch, `round-${n}-choices.json`))), tokens: compactTokens(tokens) };
   upsert(ledgerFile(record.repo), [record]);
   return { record, marker: toMarker(record), ledger: ledgerFile(record.repo) };
 }
@@ -388,7 +405,7 @@ export function aggregate(records, { since } = {}) {
   }
   const tiers = {};
   for (const r of rounds) {
-    const t = (tiers[r.tier] ??= { prs: new Set(), finished: 0, rounds: 0, invalid: 0, minutes: [], tokens: [], usd: [], prTokens: [], byIndex: {}, byScope: {}, lenses: {}, kept: 0, refuted: 0, fixed: 0, declined: 0, escalated: 0 });
+    const t = (tiers[r.tier] ??= { prs: new Set(), finished: 0, rounds: 0, invalid: 0, minutes: [], tokens: [], usd: [], prTokens: [], byIndex: {}, byScope: {}, lenses: {}, kept: 0, refuted: 0, fixed: 0, declined: 0, escalated: 0, asRecommended: 0, overridden: 0 });
     t.prs.add(r.prUrl ?? r.pr);
     if (!r.valid) { t.invalid++; continue; }
     t.rounds++;
@@ -406,6 +423,7 @@ export function aggregate(records, { since } = {}) {
     t.kept += Object.values(r.found ?? {}).reduce((a, b) => a + b, 0);
     t.refuted += r.refuted ?? 0;
     t.fixed += r.fixed ?? 0; t.declined += r.declined ?? 0; t.escalated += r.escalated ?? 0;
+    t.asRecommended += r.decided?.asRecommended ?? 0; t.overridden += r.decided?.overridden ?? 0;
   }
   for (const p of prs) {
     const t = tiers[p.tier];
@@ -439,6 +457,8 @@ export function aggregate(records, { since } = {}) {
     const escaped = t.escaped?.size ?? 0;
     if (t.merged >= 5 && escaped / t.merged >= 0.2) signals.push({ tier, kind: 'escapes', text: `${escaped} of ${t.merged} merged PRs had a defect that escaped review` });
     if (t.merged >= 10 && escaped === 0 && [...(t.mergedRepos ?? [])].every((repo) => scans[repo]?.settled)) signals.push({ tier, kind: 'no-escapes', text: `none of ${t.merged} merged PRs had a confirmed escape (as far as fix commits tell)` });
+    const decisions = t.asRecommended + t.overridden;
+    if (decisions >= 10) signals.push({ tier, kind: t.overridden / decisions <= 0.1 ? 'recommendations-taken' : 'recommendations-overridden', text: `you took the recommendation in ${t.asRecommended} of ${decisions} decisions` });
     if (t.fixed + t.declined >= 10 && t.declined / (t.fixed + t.declined) > 0.4) signals.push({ tier, kind: 'declined-often', text: `the fixer declined ${pct(t.declined, t.fixed + t.declined)} of the findings it handled` });
   }
   return { rounds: rounds.length, prs: prs.length, tiers, phases, signals, scans };
@@ -504,6 +524,77 @@ function cmdReport(opts) {
   return renderReport(agg, `${label}${opts.since ? ` since ${opts.since}` : ''}`);
 }
 
+// What a PR's review has cost so far, for the merge question: its recorded rounds, summed.
+function cmdCost(opts) {
+  need(opts, 'repo', 'pr');
+  const key = opts['pr-url'] && opts['pr-url'] !== true ? opts['pr-url'] : String(opts.pr);
+  const rounds = readLedger(ledgerFile(repoSlug(opts.repo))).filter((r) => r.kind === 'round' && [r.prUrl, r.pr].includes(key));
+  if (!rounds.length) return { rounds: 0, usd: null, weighted: null, minutes: null, line: null };
+  const sum = (pick) => rounds.reduce((total, r) => total + (pick(r) ?? 0), 0);
+  const priced = rounds.every((r) => typeof r.tokens?.usd === 'number');
+  const usd = priced ? cents(sum((r) => r.tokens.usd)) : null;
+  const weighted = sum((r) => r.tokens?.weighted);
+  const minutes = sum((r) => r.minutes);
+  const spent = usd !== null ? `about $${usd < 10 ? usd.toFixed(2) : Math.round(usd)} at API list prices` : weighted ? `${M(weighted)} weighted tokens` : 'cost not recorded';
+  return { rounds: rounds.length, usd, weighted, minutes, line: `${rounds.length} round${rounds.length === 1 ? '' : 's'}, ${spent}, ${minutes} min from the first round's start to the last round's end (waiting included)` };
+}
+
+// Where a session's review rounds spent their tokens, agent by agent: the question the per-round totals
+// cannot answer. Reads the workflow journals of the session's transcript directory.
+function cmdAgents(opts) {
+  const id = sessionId(opts);
+  const main = id ? findTranscript(id) : null;
+  if (!main) throw new Error(id ? `no transcript for session ${id}` : 'pass --scratch <a directory under the session scratchpad> or --session <id>');
+  const root = join(main.replace(/\.jsonl$/, ''), 'subagents', 'workflows');
+  const runs = existsSync(root) ? readdirSync(root).filter((name) => existsSync(join(root, name, 'journal.jsonl'))) : [];
+  const lines = [];
+  for (const run of runs) {
+    const agents = {};
+    for (const entry of readFileSync(join(root, run, 'journal.jsonl'), 'utf8').split('\n').filter(Boolean)) {
+      let j; try { j = JSON.parse(entry); } catch { continue; }
+      if (!j.agentId) continue;
+      const agent = (agents[j.agentId] ??= {});
+      if (j.type === 'started') agent.label = j.label;
+      if (j.type === 'result') agent.result = j.result;
+    }
+    const rows = [];
+    for (const [agentId, agent] of Object.entries(agents)) {
+      const file = join(root, run, `agent-${agentId}.jsonl`);
+      if (!agent.label || !existsSync(file)) continue;
+      const seen = new Map();
+      let first = null; let last = null;
+      for (const line of readFileSync(file, 'utf8').split('\n')) {
+        if (!line) continue;
+        let e; try { e = JSON.parse(line); } catch { continue; }
+        if (e.timestamp) { first ??= e.timestamp; last = e.timestamp; }
+        if (e.type === 'assistant' && e.message?.usage && e.message.model !== '<synthetic>') seen.set(e.message.id ?? e.uuid, e.message);
+      }
+      const u = { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 };
+      let model = 'unknown';
+      for (const m of seen.values()) {
+        model = m.model ?? model;
+        u.input += m.usage.input_tokens ?? 0; u.cacheWrite += m.usage.cache_creation_input_tokens ?? 0; u.cacheRead += m.usage.cache_read_input_tokens ?? 0; u.output += m.usage.output_tokens ?? 0;
+      }
+      const r = agent.result;
+      const outcome = !r ? 'no result'
+        : r.findings ? (r.findings.length ? SEVERITIES.slice().reverse().map((s) => [s, r.findings.filter((f) => f.severity === s).length]).filter(([, n]) => n).map(([s, n]) => `${n} ${s}`).join(', ') : 'nothing found')
+        : r.verdicts ? `${r.verdicts.filter((v) => v.refuted).length} of ${r.verdicts.length} refuted`
+        : 'refuted' in r ? (r.refuted ? 'refuted' : `upheld (${r.severity})`)
+        : r.portions ? `${r.portions.length} parts`
+        : r.groups ? `${r.groups.length} group${r.groups.length === 1 ? '' : 's'} of duplicates`
+        : r.verdict ?? 'done';
+      rows.push({ label: agent.label, model: model.replace(/^claude-/, ''), minutes: first && last ? Math.round((Date.parse(last) - Date.parse(first)) / 60000) : 0, turns: seen.size, usd: usdOf(model, u), weighted: weigh(u), outcome, start: first });
+    }
+    if (!rows.some((row) => /^review:/.test(row.label))) continue;
+    rows.sort((a, b) => b.usd - a.usd);
+    const total = rows.reduce((sum, row) => sum + row.usd, 0);
+    lines.push('', `## Review round started ${rows.map((row) => row.start).filter(Boolean).sort()[0]?.slice(0, 16).replace('T', ' ')} UTC · ${rows.length} agents · $${total.toFixed(2)} at list prices`, '', '| Agent | Model | Min | Turns | $ | Share | Outcome |', '|---|---|---|---|---|---|---|');
+    for (const row of rows) lines.push(`| ${row.label} | ${row.model} | ${row.minutes} | ${row.turns} | ${row.usd.toFixed(2)} | ${total ? Math.round((100 * row.usd) / total) : 0}% | ${row.outcome} |`);
+  }
+  if (!lines.length) return 'No review rounds in this session.';
+  return [`# Review rounds of session ${id}, agent by agent`, ...lines].join('\n');
+}
+
 // ---------------------------------------------------------------------------------------------
 
 const COMMANDS = {
@@ -514,6 +605,8 @@ const COMMANDS = {
   escape: cmdEscape,
   import: cmdImport,
   report: cmdReport,
+  cost: cmdCost,
+  agents: cmdAgents,
   tokens: (opts) => { need(opts, 'started'); return countTokens(opts); },
 };
 
@@ -522,7 +615,7 @@ if (process.argv[1] && realpathSync(process.argv[1]).toLowerCase() === realpathS
   const opts = parseArgs(process.argv.slice(2));
   const command = COMMANDS[opts._[0]];
   if (!command) {
-    console.error('usage: measure.mjs round | pr | phase | tokens | import | escapes | escape | report  (see the header of this file)');
+    console.error('usage: measure.mjs round | pr | phase | tokens | cost | agents | import | escapes | escape | report  (see the header of this file)');
     process.exit(2);
   }
   try {

@@ -430,6 +430,7 @@ export const commands = {
       prId: c.prId ?? null,
       prWebUrl: c.prId ? pageUrl(r, c.prId) : null,
       repoWebUrl: null,
+      limits: { description: null },
       me: me(),
     };
   },

@@ -25,7 +25,7 @@ JSON, except `watch`. `show` gives `platform`; branch on it only where the table
 
 | Need | Command |
 |---|---|
-| Who am I, which repo, which platform | `context [pr]` |
+| Who am I, which repo, which platform, how long a description may be | `context [pr]` |
 | PR for the current branch | `find --branch <name>` |
 | Branches, commits, author, `isMine`, merge status, description limit | `show <pr>` |
 | Comment threads, classified `bot` / `human` | `threads <pr>` |
@@ -59,8 +59,10 @@ newlines survives a file and rarely survives shell quoting.
   Azure DevOps shows them as they are. GitHub and GitLab only resolve: `fixed`, `wontFix`, `byDesign` and
   `closed` resolve the thread, and the exact status is kept in the marker. GitHub conversation comments
   (not on a line) cannot be resolved at all; their status lives only in the marker.
-- **Description limits differ:** `show` → `limits.description` (Azure DevOps 4,000, GitHub 65,536, GitLab
-  about a million, `local` none). `set-description` refuses anything longer.
+- **Description limits differ:** `context` and `show` → `limits.description` (Azure DevOps 4,000, GitHub
+  65,536, GitLab about a million, `local` none). `open` and `set-description` refuse anything longer, so
+  read the limit before you write a body, not after.
+- **A failed command says why in its first line.** It does not print the command list; `help` does.
 - **Line numbers are in the PR's head version** of the file (the right side of the diff). Pass `--file`
   repo-relative without a leading slash (`src/x.ts`): Git Bash rewrites `/src/x.ts` into a Windows path.
 - **Merge strategies:** `merge` (merge commit), `squash`, `rebase`, `rebase-merge` (rebase, then a merge

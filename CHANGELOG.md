@@ -2,6 +2,45 @@
 
 Each `## <version>` section becomes the notes of the GitHub release `v<version>`. Newest first.
 
+## 4.6.0
+
+A review now posts only what you have to read, the pipeline starts at a ticket, and nothing needs setup
+first. With the development junctions, rerun `./install.ps1` to link the new `sync-ticket` skill; with the
+plugin, just update. A PR already in review carries on.
+
+- **A quiet review.** One closed thread on the PR is the review's log: the triage, each round's findings,
+  outcomes and summary, the checks, the original description. A finding gets a thread of its own only when
+  it needs you: a decision (the ask, the finding and the options in one comment) or a decline you may
+  disagree with (the verdict and the finding in one comment). A finding fixed with proof is a row in the
+  log and a commit: no thread, no chat line. Before, every finding, every round and the report were
+  threads. In chat you get one start line, at most one line per round, decisions, and the merge question.
+  Writing on a declined thread opens the review again. PRs reviewed in the old layout still resume.
+- **From a ticket to merged code.** `spec-feature SHOP-228` reads the ticket, asks until nothing is open,
+  and on your approval writes the spec into the ticket's description as its own **Specification** section,
+  below what the stakeholder wrote, with one sub-task per acceptance criterion. `build-feature` closes each
+  sub-task as its criterion is built; `babysit-pr` reviews against the ticket's criteria; `merge-pr` leaves
+  the ticket one comment. The ticket's own status is never moved. Without a ticket the spec is a file in
+  `docs/specs/`, as before.
+- **`sync-ticket`** (new) does the ticket work. Jira through the Atlassian connector needs no setup and
+  writes the section into descriptions that are plain text; a description with an image, a mention or a
+  smart link is left alone and the section goes into a sub-task, because the connector hands descriptions
+  over as Markdown. With `JIRA_EMAIL` and `JIRA_API_TOKEN` set, `ticket.mjs` writes any description
+  exactly, reads it back and restores it if anything above the section changed.
+- **No setup first.** A repository without a profile gets one drafted from its files
+  (`setup-repo/scripts/draft.mjs`: the checks its build files name, the merge strategy its history shows),
+  marked `calibrated: false`. The skills say what was assumed and that `setup-repo` calibrates it.
+- **Every run says what it uses:** the profile and whether it is only a draft, the tier with its model and
+  effort, the ticket and how it is reached. [docs/GUIDE.md](docs/GUIDE.md) is the new user guide.
+- **The merge question shows the cost,** and `measure-prs` got `cost` (one PR) and `agents` (a session's
+  rounds agent by agent: model, turns, price, share, outcome). Decisions record whether you took the
+  recommendation; write choices as `{ "R2-F3": { "option": "A", "text": "…" } }`.
+- The low tier's findings are checked by a skeptic too. The risk score is computed in a subagent, so the
+  diff does not stay in the session. A build fix at merge time is checked by one reviewer instead of a
+  review round. The intent given to reviewers carries the ticket's acceptance criteria.
+- `pr-host`: `context` reports the description limit, so a body is written to fit; a failed command says
+  why in its first line instead of printing the command list.
+- The repository has tests now (`node --test tests/*.test.mjs`), and the release workflow runs them.
+
 ## 4.5.0
 
 Every agent now runs on the model and effort that fit its task, following

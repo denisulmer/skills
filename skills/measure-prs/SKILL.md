@@ -1,6 +1,6 @@
 ---
 name: measure-prs
-description: Measure what babysit-pr runs cost and what they found - tokens, wall time and agents per round, findings kept and refuted per reviewer lens, fixes, decisions, failed rounds - from the local metrics ledger, find the defects that escaped review (later fixes traced back to reviewed PRs, each confirmed by the user), and propose changes to the review tiers or the repository profile backed by those numbers. Use when the user asks what the PR reviews cost, whether later rounds or a lens are worth it, how the tiers should be tuned, "measure", "metrics", "stats", "how is babysit doing" or "what slipped through review", or wants to import metrics from PRs reviewed in another session.
+description: Measure what babysit-pr runs cost and what they found - dollars, tokens and wall time per round, where a round's agents spent them, findings kept and refuted per reviewer, decisions and whether the recommendation was taken - find the defects that escaped review (each confirmed by the user), and propose changes to the review tiers or the repository profile backed by those numbers. Use when the user asks what the PR reviews cost, whether a reviewer or a round is worth it, how the tiers should be tuned, "metrics", "how is babysit doing" or "what slipped through review".
 ---
 
 # Measure PR reviews
@@ -33,9 +33,14 @@ to compare when tiers use different models. Both are good for comparing runs; ne
 3. **Report.** `<measure> report --repo <checkout>` (or `--all`, and `--since YYYY-MM-DD` to compare
    before and after a release; each record names the plugin `version` that produced it). Show the
    markdown it prints. When the user wants a chart, chart from `--json`.
+   For one PR, `<measure> cost --repo <checkout> --pr <id>` gives its rounds and their price in one
+   line. To see where a round's money went, `<measure> agents --session <id>` (or `--scratch <a directory
+   under that session's scratchpad>`) lists that session's rounds agent by agent: model, turns, price,
+   share and what each found. Use it when a round cost more than its tier usually does.
 4. **Read the signals.** The report's Signals section lists facts with enough data behind them (a quiet
    later round, a lens that rarely finds anything, a tier whose merged PRs escape often or never, skeptics that rarely refute or refute most, rounds
-   lost to usage limits, a fixer that declines often). No signals means there is not enough data yet:
+   lost to usage limits, a fixer that declines often, decisions in which the user took or overrode the
+   recommendation). No signals means there is not enough data yet:
    say how many rounds are recorded and stop there rather than guessing.
 5. **Propose.** For each signal, one proposal: the change, the numbers behind it, what it would save,
    and what it risks. Proposals go to one of two places:

@@ -61,7 +61,7 @@ function main() {
   const repo = typeof opts.repo === 'string' ? opts.repo : '.';
   if (opts['which-profile']) {
     const profile = loadProfile(repo, typeof opts.base === 'string' ? opts.base : null, opts.profile);
-    console.log(JSON.stringify(profile ? { name: profile.name, source: profile.source, file: profile.file, text: profile.text } : null, null, 2));
+    console.log(JSON.stringify(profile ? { name: profile.name, source: profile.source, file: profile.file, calibrated: profile.calibrated, text: profile.text } : null, null, 2));
     return;
   }
   const planned = typeof opts.planned === 'string';
@@ -147,7 +147,7 @@ function main() {
     head: planned ? null : opts.head,
     ...(planned ? { planned: true } : {}),
     mergeBase,
-    profile: profile ? { name: profile.name, source: profile.source, file: profile.file } : null,
+    profile: profile ? { name: profile.name, source: profile.source, file: profile.file, calibrated: profile.calibrated } : null,
     totals: {
       files: changed.length,
       added: changed.reduce((n, f) => n + f.added, 0),

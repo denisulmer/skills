@@ -1,6 +1,6 @@
 ---
 name: merge-pr
-description: Merge a pull request and see it through (GitHub, GitLab, Azure DevOps, or a reviewed branch in a plain git repository) - preflight, auto-merge with the repository's merge strategy, watch the checks, fix failing builds and merge conflicts, answer late comments, and confirm the merge landed and the branch and worktree are cleaned up. Use when the user says "merge this PR", "complete the PR", "ship it" or "get this merged", and as babysit-pr's last step once the user confirmed the merge.
+description: Merge a pull request and see it land on GitHub, GitLab, Azure DevOps or plain git - preflight, auto-merge with the repository's merge strategy, watch the checks, fix failing builds and conflicts, answer late comments, clean up the branch and worktree, and leave the ticket its one comment. Use when the user says "merge this PR", "complete the PR", "ship it" or "get this merged", and as babysit-pr's last step once the user confirmed the merge.
 ---
 
 # Merge a PR and watch it land
@@ -9,9 +9,10 @@ description: Merge a pull request and see it through (GitHub, GitLab, Azure DevO
 (`node <base>/../score-pr/scripts/signals.mjs --which-profile --base origin/<target> --repo <repo>`) gives
 the merge strategy and the check commands.
 
-Write every comment and chat line by `<base>/../babysit-pr/references/style.md`: the Fixed and Checked
-templates for threads, the Merge progress lines for chat, its notification table. Stay quiet while things
-go to plan; speak up when the state changes in a way the user would care about.
+Write every comment and chat line by `<base>/../babysit-pr/references/style.md`: its replies to people's
+comments, the Merge progress lines for chat, its notification table. Stay quiet while things go to plan;
+speak up when the state changes in a way the user would care about. Post nothing a person does not have to
+read: what you fix on the way goes on the review's log thread, not into threads of its own.
 
 ## 0. Confirmation
 
@@ -70,12 +71,16 @@ expires until the PR is finished. Each line is an event:
 - Infrastructure trouble (runner lost, timeout without a test failure, package feed or network errors):
   `rerun-check <pr> <checkId>` once per check. A second infrastructure failure → tell the user.
 - A real failure: fix it with babysit-pr's fixer brief (`<base>/../babysit-pr/references/fixer.md`) and
-  its autonomy line, on the model and effort of the PR's tier (babysit-pr's rounds.md §3; an untriaged PR
-  counts as medium). For a PR triaged medium or above (its `pr-babysit:triage` thread), run one
-  babysit-pr review round over the fix before pushing: `scope: "delta"`, `sinceSha` = the head before the
-  fix (babysit-pr's rounds.md §1). Push with `git -C <wt> push origin HEAD:refs/heads/<source>`;
-  the push restarts the checks and auto-merge stays set. Record it as a thread
-  (`--key pr-babysit:merge-fix-<n>`, the Fixed template, status `fixed`).
+  its autonomy line, on the model and effort of the PR's tier (`<base>/../babysit-pr/references/tiers.json`;
+  an untriaged PR counts as medium). For a PR triaged medium or above (its `pr-babysit:triage` thread),
+  have one reviewer check the fix before you push: Agent tool, the same model and effort, read only,
+  "Check commit <sha> in <worktree>, which fixes a failed build of PR <id>. Is the cause gone and not only
+  the symptom, would its test fail without the fix, and does it break anything it touches? Answer `sound`,
+  or each defect with file:line and the evidence." A defect goes back to the fixer once, then to the user.
+  Push with `git -C <wt> push origin HEAD:refs/heads/<source>`; the push restarts the checks and
+  auto-merge stays set. Record it as a reply on the review's log thread (`<pr-host> reply <pr> <the
+  pr-babysit:triage thread> --key pr-babysit:merge-fix-<n>`: `🤖 ✅ **Build fixed** in <commit>`, the cause
+  and the proof), or as a closed thread when the PR has no log.
 - After three attempts at the same failing check, stop and ask.
 
 **Conflicts.** `git -C <wt> fetch origin <target>` and `git -C <wt> merge origin/<target>`; never rebase
@@ -100,6 +105,9 @@ Whenever you have to wait for the user, cancel auto-merge while you wait, and se
   --merge-commit <the merge commit>`, plus `--commits <n>` after a rebase or fast-forward merge of n commits
   (the escape scan traces later fixes back to the PR through them). A failing metrics script never holds up
   the merge; say so in one line.
+- When the PR belongs to a ticket and this session has the tracker's tools: leave the ticket its one
+  comment (`<base>/../sync-ticket/SKILL.md`, When the work is merged) and tell the user the ticket's
+  status in one line. Moving the ticket is theirs.
 - Remove the worktree babysit-pr created (`git -C <repo> worktree remove <wt>`) once
   `git -C <wt> status --porcelain` is empty. Leave any other worktree alone.
 - Tell the user with the last Merge progress line, and send the "merged" push notification.

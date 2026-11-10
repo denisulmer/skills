@@ -1,27 +1,39 @@
 # Writing for the reviewer
 
 Everything babysit-pr, merge-pr and score-pr write has one reader who matters: the user, deciding what
-deserves their attention. Write so they can stop reading as early as possible, and so the few things that
-need them cannot be missed.
+deserves their attention. A person who has to read everything ends up approving everything. So the review
+posts as little as it can, and what it posts lets them stop reading as early as possible.
 
 ## Contents
 
-1. Rules
-2. PR comments: triage, finding, replies, people's comments, round summary, report thread
-3. Chat: triage line, decisions, another round, round failed, round limit, merge question, merge progress
-4. Push notifications
+1. What a person has to read, and what they never have to
+2. Rules
+3. On the PR: the log, the two threads, people's comments
+4. In chat: the start line, one line per round, decisions, the merge question
+5. Push notifications
 
-## 1. Rules
+## 1. What a person has to read
 
-1. **The first line is the outcome or the ask.** "2 decisions need you", "Fixed in `1a2b3c4`",
-   "Risk 52/100 · medium review". Detail follows for whoever wants it.
-2. **Three attention levels, always visibly different.**
-   - ❓ **Needs you**: a decision, an approval, a stuck merge. Only these reach chat and push notifications.
-   - 👀 **Worth a glance**: judgement calls a person may disagree with: a declined finding, a major
-     finding a skeptic disproved, a refuted comment from a colleague, a fix in a risky area, a tier
-     raised mid-way. One line each with a link,
-     in the report and in the merge question.
-   - Everything else is audit trail: posted, resolved, never pushed at the user.
+| Reads | Where | When |
+|---|---|---|
+| ❓ a decision | chat (Decisions message), with a thread at the code line | only when the fixer may not decide |
+| 👀 a judgement call | the merge question and the PR description, one line each with a link | at the merge |
+| the cover page | the PR description: what changed, why, how dangerous, the 👀 list | once |
+
+Everything else is the **log**: one closed thread on the PR that holds the triage, each round's findings,
+outcomes and summary, the checks and the original description. It is there for an audit and for resuming;
+nobody has to open it. A finding that was fixed with proof is one line in the log and a commit. It gets no
+thread, no chat line and no notification.
+
+A 👀 item is a call a person may disagree with: a declined finding, a major finding a skeptic disproved, a
+person's comment that was refuted, a fix in a risky area the PR did not touch before, a tier raised mid-way.
+
+## 2. Rules
+
+1. **The first line is the outcome or the ask.** "Needs Denis: keep the route for one more release?",
+   "Declined, by design: ADR-0038 allows it". Detail follows for whoever wants it.
+2. **One comment per thing.** A thread that needs a person says the ask or the verdict, and the finding it
+   is about, in its first comment. Nobody should have to read a thread from the top to learn what it wants.
 3. **The same icons everywhere.** Severity: 🔴 blocker · 🟠 major · 🟡 minor · ⚪ nit. Outcome:
    ✅ fixed · ↩️ declined · 🧭 decided by <name> · ❓ needs <name> · ⚠️ unproven.
 4. **Short lines, no walls.** One fact per bullet, at most three sentences per paragraph, a table when
@@ -30,24 +42,22 @@ need them cannot be missed.
    Separate lines with a blank line, or make them list items.
 6. **Evidence goes in a code block**, trimmed to the lines that make the point (ten at most, `…` for
    cuts), with the command named above it.
-7. **Link instead of repeating.** A summary names a finding in a few words and links to its thread.
-   Threads: `<thread url>`. Commits: `<repoWebUrl>/commit/<full sha>`, shown as the short sha in backticks.
-8. **Machinery last, in italics.** Who found it, which model, the skeptic's verdict, round: readers skip it,
-   auditors find it.
+7. **Link instead of repeating.** Threads: `<thread url>`. Commits: `<repoWebUrl>/commit/<full sha>`, shown
+   as the short sha in backticks.
+8. **Machinery last, in italics.** Who found it, which model, the skeptic's verdict, the round: readers
+   skip it, auditors find it.
 9. **The repository's words, not the machinery's.** Domain nouns from `CONTEXT.md`. Say "reviewer",
-   "check", "round". Never mention agents, lenses, prompts, schemas, workflows or tokens.
-10. **Every PR comment starts with 🤖**, so nobody takes it for something the user typed.
-    Write in a neutral voice ("Checked: …"), not "I", because the comment carries the user's name.
+   "check", "round". Never mention agents, lenses, prompts, schemas, workflows or tokens on the PR.
+10. **Every PR comment starts with 🤖**, so nobody takes it for something the user typed. Write in a
+    neutral voice ("Checked: …"), not "I", because the comment carries the user's name.
 
-## 2. PR comments
+## 3. On the PR
 
-Statuses below are pr-host's; on GitHub and GitLab the resolved ones (`fixed`, `wontFix`, `byDesign`,
+`scripts/babysit.mjs` writes everything in this section from the round's results; never post one of these
+by hand. Statuses are pr-host's; on GitHub and GitLab the resolved ones (`fixed`, `wontFix`, `byDesign`,
 `closed`) resolve the thread.
 
-`scripts/babysit.mjs` renders the triage, finding, reply and round summary templates below; a change to
-one of them goes into both places. Its bodies also end with a hidden `<!-- babysit {...} -->` state marker.
-
-### Triage (`pr-babysit:triage`, status `closed`)
+**The log** (`pr-babysit:triage`, status `closed`). Its first comment is the triage:
 
 ~~~markdown
 🤖 **Risk 68/100 · high review**
@@ -56,68 +66,51 @@ one of them goes into both places. Its bodies also end with a hidden `<!-- babys
 
 - **Door, one-way:** suppliers' tooling fails the moment the route goes; re-adding it later does not undo those failures.
 - **Blast radius, contract:** the legacy self-service API is called by external supplier systems.
-- **Floor 55:** the legacy self-service layer must stay 1:1 with the legacy API.
 - **Safe because:** no supplier has called `/account-information` in 90 days. ⚠️ Unproven: round 1 checks this first.
 
 **Plan:** round 1 reviews the whole change (correctness per part, standards and intent, blast radius, adversary) · if it keeps a major finding, follow-up rounds check only the fixes, up to 3 rounds in all · a skeptic checks every finding before it is posted
 ~~~
 
-### Finding (`pr-babysit:R<n>-F<k>`, inline, status `active`)
+Each round then adds three replies there: what it found (`R<n>-findings`), what became of it
+(`R<n>-outcomes-…`), and its summary (`R<n>-summary`), a table with one row per finding, what the skeptics
+disproved (a disproved major or blocker carries its icon and goes on the 👀 list), the nits, and the
+reviewed commit:
 
 ~~~markdown
-🤖 🟠 **Major · R2-F1:** a supplier key without an expiry date gets a 500 on every call
+🤖 **Round 1 of up to 3 · high review:** ✅ 3 fixed · 🧭 1 decided · ↩️ 1 declined
 
-`ApiKeyHandler.cs:42` reads `key.ExpiresAt.Value` before checking `HasValue`. Keys issued before ADR-0012 have no expiry date.
+| | Finding | Outcome |
+|---|---|---|
+| 🟠 | R1-F1 key without expiry gets a 500 | ✅ `1a2b3c4` |
+| 🟠 | [R1-F2](<thread url>) route removal breaks supplier tooling | 🧭 kept one release · `5d6e7f8` |
+| 🟡 | [R1-F4](<thread url>) log line shows the key prefix | ↩️ by design |
 
-Reported more than once; the same defect also shows at `KeyRotationJob.cs:17`.
+**Not clean** (2 at or above major) → round 2 is next, on the fixes only; done once they hold no major finding.
 
-**Evidence:** `dotnet test --filter ApiKeyHandlerTests`
+**Disproved before posting:** 1
 
-```text
-ApiKeyHandlerTests.Key_without_expiry_is_accepted   FAILED
-  System.InvalidOperationException: Nullable object must have a value.
-```
+- 🟠 `Auth.cs:40` wrong status for an expired key: `KeyMiddleware.cs:18` handles it first
 
-**Suggested fix:** treat a missing expiry as "never expires" and cover it in `ApiKeyHandlerTests`.
-
-_Found by correctness and adversary reviewers · upheld by a skeptic · round 2, high review_
+_Reviewed `fa6b973` · 6 reviewers (…) · opus high · 1 duplicate report merged · every finding checked by a skeptic (2)_
 ~~~
 
-The "Reported more than once" line appears only when several reviewers reported the defect; they share
-this one thread.
-
-### Replies on a finding
-
-Fixed (status `fixed`):
-
-~~~markdown
-🤖 ✅ **Fixed** in [`1a2b3c4`](<commit url>)
-
-- **Cause:** the handler assumed every key has an expiry date.
-- **Change:** a missing expiry now means "never expires"; new test `Key_without_expiry_is_accepted`.
-- **Proof:** `dotnet test --filter ApiKeyHandlerTests` → 14 passed (before: 1 failed)
-~~~
-
-Declined (status `closed`, `byDesign` or `wontFix`, see rounds.md):
-
-~~~markdown
-🤖 ↩️ **Declined, false positive:** `KeyMiddleware.cs:18` rejects expired keys with 401 before this handler runs, so the 500 path is unreachable.
-
-**Evidence:** `dotnet test --filter Expired` → 3 passed
-~~~
-
-Needs the user (status `pending`):
+**A decision** (`pr-babysit:R<n>-F<k>`, at the code line, status `pending`): the ask, the finding in two
+sentences, the options. When the user decides, a reply says so and the thread resolves.
 
 ~~~markdown
 🤖 ❓ **Needs Denis:** remove the legacy route now, or keep it for one more release?
 
+Route removal breaks supplier tooling. `Routes.cs:40` deletes `/account-information`, and nothing here shows who still calls it. Callers get a 404 the moment this ships.
+
 - **A (recommended):** keep it and send a `Deprecation` header; remove it next release. Safe; one more release of dead code.
 - **B:** remove it now. Clean; any supplier still calling it gets a 404 immediately.
 
-The question is waiting in the babysit session.
-~~~
+Recommended because nothing proves the route is unused.
 
-Decided (status `fixed`):
+The question is waiting in the babysit session.
+
+_R1-F2 · 🟠 major · found by blast-radius · upheld by a skeptic · round 1, high review_
+~~~
 
 ~~~markdown
 🤖 🧭 **Decided by Denis:** keep the route for one more release (option A).
@@ -125,130 +118,67 @@ Decided (status `fixed`):
 Done in [`5d6e7f8`](<commit url>): `Deprecation` and `Sunset` headers on every response.
 ~~~
 
-### People's comments
-
-Confirmed (stays `active` until fixed, then the Fixed reply):
+**A decline** (`pr-babysit:R<n>-F<k>`, at the code line, status `closed`, `byDesign` or `wontFix`): the
+verdict with its reason, then the finding. A reply from anyone opens it again for the next round.
 
 ~~~markdown
-🤖 **Checked: right.** `SupplierSession.cs:88` never checks `IsDisabled`. Tracked as R2-F4; the fix will be linked here.
+🤖 ↩️ **Declined, by design:** ADR-0038 allows the key prefix in logs.
+
+**The finding was:** Log line shows the key prefix. `Logging.cs:12` writes the first 8 characters of a supplier key.
+
+Write here if you disagree; the review answers it.
+
+_R1-F4 · 🟡 minor · found by standards-spec · upheld by a skeptic · round 1, high review_
 ~~~
 
-Refuted (status `closed`, or `byDesign` when it describes intended behaviour):
+In **review-only mode** the PR is someone else's: every finding is posted as its own thread (status
+`active`) so the author sees it at the line, and nothing is fixed or resolved for them.
+
+**People's comments** are answered on their own thread, by the review round:
+
+- Confirmed (stays `active` until fixed, then a Fixed reply with cause, change and proof):
+  `🤖 **Checked: right.** <file:line and what is wrong>. Tracked as R2-F4; the fix will be linked here.`
+- Refuted (status `closed`): `🤖 **Checked: this doesn't hold.** <the file:line and output that settle it>`
+  and `Reopen the thread if there is a path this misses.`
+- Answered (status `closed`): `🤖 **Answer:** <the answer>`
+
+## 4. In chat
+
+**Chat budget.** Between the start line and the merge question you send one line per round at most, plus
+Decisions messages. Do not narrate fixes, list findings or summarize a round in chat: that is what the log
+is for, and every line here is one the user has to read.
+
+### Start line
+
+It says what the review will use and why, so nothing about it is a surprise later:
 
 ~~~markdown
-🤖 **Checked: this doesn't hold.** `SupplierSession.cs:88` only runs after `SessionGuard.cs:31`, which already rejects disabled suppliers.
-
-**Evidence:** `dotnet test --filter Disabled_supplier_is_rejected` → passed
-
-Reopen the thread if there is a path this misses.
+**PR !27887 · risk 52/100 · medium review.** Using: profile `contoso-shop` (drafted automatically, not calibrated) · Opus at medium effort, 3 reviewers and a skeptic · up to 3 rounds. Round 1 is running; I'll only interrupt you for decisions.
 ~~~
 
-Answered (status `closed`):
+### One line per round
 
 ~~~markdown
-🤖 **Answer:** the `sharp` override is gone because `next` 16.4.3 already requires `^0.35.5`; see `package-lock.json`.
+Round 1: 5 found, 4 fixed, 1 needs you (below).
 ~~~
 
-### Round summary (`pr-babysit:R<n>-summary`, posted when the round closes, status `closed`)
-
-~~~markdown
-🤖 **Round 2 of up to 3 · high review:** ✅ 2 fixed · 🧭 1 decided · ↩️ 1 declined
-
-| | Finding | Outcome |
-|---|---|---|
-| 🟠 | [R2-F1](<thread url>) key without expiry gets a 500 | ✅ [`1a2b3c4`](<commit url>) |
-| 🟠 | [R2-F2](<thread url>) route removal breaks supplier tooling | 🧭 kept one release · [`5d6e7f8`](<commit url>) |
-| 🟡 | [R2-F3](<thread url>) no test for a disabled supplier | ✅ [`9a8b7c6`](<commit url>) |
-| 🟡 | [R2-F4](<thread url>) log line shows the key prefix | ↩️ by design, ADR-0038 |
-
-**Not clean** (2 at or above major) → round 3 is next, on the fixes only; done once they hold no major finding.
-
-**Disproved before posting:** 3
-
-- 🟠 `Auth.cs:40` wrong status for an expired key: `KeyMiddleware.cs:18` handles it first
-- `ui.tsx:12` missing translation: the key exists in every catalog
-- `Program.cs:88` middleware order: covered by `AuthPipelineTests`
-
-**Nits:** 2 fixed in [`aa11bb2`](<commit url>), 1 skipped
-
-_Reviewed the fixes since `c4d5e6f` up to `fa6b973` · 1 reviewer (fixes) · opus high · 1 duplicate report merged · every finding checked by a skeptic (2)_
-
-<!-- pr-metrics {"v":1,"kind":"round","round":2,…} -->
-~~~
-
-A disproved major or blocker finding carries its icon in the Disproved list and goes on the 👀 list. The
-marker is the `marker` that `measure.mjs round` printed, pasted unchanged as the last line. Hosts don't
-render it; the measure-prs skill reads it back.
-
-A clean round is one line plus the machinery line:
-
-~~~markdown
-🤖 **Round 3 of up to 3 · high review:** ✅ clean, nothing found
-
-_Reviewed the fixes since `fa6b973` up to `b2c3d4e` · 1 reviewer (fixes) · opus high_
-~~~
-
-### Report thread (`pr-babysit:report`, status `closed`)
-
-~~~markdown
-🤖 **Review report · risk 68/100 · high · 3 rounds**
-
-### 👀 Worth a glance
-
-- [R2-F4](<thread url>) declined as by design: ADR-0038 allows the key prefix in logs
-- [Jane Doe's comment](<thread url>) refuted: disabled suppliers are rejected earlier by `SessionGuard`
-- 🟠 Disproved by a skeptic in [round 2](<summary url>): wrong status for an expired key (`KeyMiddleware.cs:18` handles it first)
-- Review raised from medium to high in round 2: a fix touched the legacy self-service layer
-
-### Rounds
-
-| Round | Found | Outcome |
-|---|---|---|
-| [1](<summary url>) | 🟠 3 · 🟡 2 | ✅ 4 · ↩️ 1 |
-| [2](<summary url>) | 🟠 2 · 🟡 2 | ✅ 2 · 🧭 1 · ↩️ 1 |
-| [3](<summary url>) | none | ✅ clean |
+Leave it out when the round needs nothing from the user and the merge question follows anyway.
 
 ### Decisions
 
-- 🧭 Keep the legacy route for one more release ([R2-F2](<thread url>))
-
-### Checks
-
-- `scripts/dev/check-fast.sh` → passed
-- `scripts/dev/check-backend.sh` → passed
-
-### Triage
-
-<the triage thread's bullets>
-
-### Original description
-
-<verbatim>
-~~~
-
-## 3. Chat
-
-### Triage line
+One message per round, everything else already fixed and pushed. The user answers in one line.
 
 ~~~markdown
-**PR !27887 · risk 52/100 · medium review:** round 1 reviews the whole change and is running now; follow-up rounds only check the fixes. I'll only interrupt you for decisions.
-~~~
+**PR !27887 · round 1 · 2 decisions need you.** Everything else is fixed and pushed.
 
-### Decisions
-
-One message per round, everything else already fixed and pushed. The user should be able to answer in one line.
-
-~~~markdown
-**PR !27887 · round 2 · 2 decisions need you.** Everything else is fixed and pushed.
-
-**1 · Keep the legacy route for one more release?** 🟠 [R2-F2](<thread url>)
+**1 · Keep the legacy route for one more release?** 🟠 [R1-F2](<thread url>)
 
 Removing `/account-information` breaks any supplier tooling that still calls it, and nothing here shows who does.
 
 - **A (recommended):** keep it with a `Deprecation` header and remove it next release. Safe; one more release of dead code.
 - **B:** remove it now. Clean; callers get a 404 immediately.
 
-**2 · Accept a breaking change to the CSV header?** 🟡 [R2-F5](<thread url>)
+**2 · Accept a breaking change to the CSV header?** 🟡 [R1-F5](<thread url>)
 
 …
 
@@ -257,8 +187,7 @@ Reply like `1A 2B`, or `ok` for all recommendations.
 
 ### Another round?
 
-Sent only before a second full round (`args` printed `ask: true`): someone else pushed, or the tier
-rose. Follow-up rounds over the fixes never ask. The answer is yes or no.
+Only before a second full round (`args` printed `ask: true`): someone else pushed, or the tier rose.
 
 ~~~markdown
 **PR !27887 · 3 commits arrived after round 2** that this review did not write.
@@ -268,7 +197,7 @@ Reviewing the whole change again takes 7 reviewers (~1 h). Run it, or go to the 
 
 ### Round failed
 
-A 5-hour usage limit retries by itself (rounds.md §1). Say so in one line, no question:
+A 5-hour usage limit retries by itself (rounds.md §1); say so in one line, no question:
 
 ~~~markdown
 **PR !27887 · round 1 paused:** the 5-hour usage limit was reached. It resumes by itself at 6:45 pm; nothing was lost or posted.
@@ -294,6 +223,9 @@ Run **another round**, **accept** the PR as it is (the finding stays open on the
 
 ### Merge question
 
+The one message the user reads in full. Nothing in it is audit trail: the verdict, what is still owed, the
+👀 list, the cost, the ask.
+
 ~~~markdown
 **PR !27887 is ready to merge:** risk 52/100 · medium · 2 rounds, the last one clean
 
@@ -305,8 +237,14 @@ Run **another round**, **accept** the PR as it is (the finding stays open on the
 
 - [R1-F4](<thread url>) declined as a false positive: the 500 path is unreachable behind `KeyMiddleware`
 
+Cost: 2 rounds, about $14 at API list prices.
+
 Merge with a merge commit and delete the branch?
 ~~~
+
+The cost line is `cost.line` from `babysit.mjs state`. When the profile was drafted automatically and never
+calibrated, add one line after it: `The repository profile is a draft: /setup-repo calibrates it against
+your last 20 merges.`
 
 ### Merge progress
 
@@ -316,7 +254,7 @@ Say something only when the state changes in a way the user would care about:
 - `The PR build failed in check-frontends (lint). Fixed in 1a2b3c4; the build is running again.`
 - `**PR !27887 merged** as 1a2b3c4. Branch deleted, worktree removed.`
 
-## 4. Push notifications
+## 5. Push notifications
 
 Only for ❓ items and endings. One line, under 200 characters, the PR first, then what to do.
 

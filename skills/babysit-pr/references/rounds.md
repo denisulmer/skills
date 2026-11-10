@@ -1,22 +1,22 @@
 # Review rounds
 
 `<babysit>` = `node <base>/scripts/babysit.mjs`, `<checks>` = `node <base>/../setup-repo/scripts/checks.mjs`.
-babysit.mjs does the bookkeeping: it reads the PR back, builds the round's inputs, and posts every comment
-in [style.md](style.md)'s templates with its key and status. You do what needs judgment: run the round,
-brief the fixer, check its work, ask the user, push. Never post a comment babysit.mjs posts by hand.
+babysit.mjs does the bookkeeping: it reads the PR back, builds the round's inputs, and posts everything the
+round leaves on the PR, with its key and status. You do what needs judgment: run the round, brief the
+fixer, check its work, ask the user, push. Never post by hand what babysit.mjs posts.
 
 Every command takes `--pr <id> --repo <worktree>`; the round commands also `--round <n> --scratch <scratch>`.
 Its files live in the scratch directory: `round-<n>-args.json`, `round-<n>-result.json`,
-`round-<n>-threads.json`, `round-<n>-fixer*.json`, `round-<n>-choices.json`.
+`round-<n>-fixer*.json`, `round-<n>-checks.json`, `round-<n>-choices.json`.
 
 ## Contents
 
 1. Starting a round
 2. Recording findings
-3. Fixing, pushing, resolving
+3. Fixing, pushing, replying
 4. Asking the user
 5. Closing a round
-6. Thread statuses
+6. What is on the PR afterwards
 
 ## 1. Starting a round
 
@@ -64,11 +64,14 @@ Resuming works in the same session only; in a new session, rerun `args` and the 
 
 ## 2. Recording findings
 
-`<babysit> record` posts one inline thread per finding (status `active`) and a reply on each person's
-thread (Confirmed, Refuted or Answered). It writes `round-<n>-threads.json`, which maps each finding to its
-thread. A confirmed comment is now a finding: it is fixed like the others, and its replies go on the
-person's own thread. Nits and disproved findings get no thread; they go into the round summary. Rerunning
-`record` posts nothing twice.
+`<babysit> record` puts the round's findings on the log (the triage thread) as one reply, and answers each
+person's thread (Confirmed, Refuted or Answered). It creates no thread for a finding: in owner mode a
+finding gets one only when it turns out to need a person (§3). A confirmed comment from a person is a
+finding from here on; it is fixed like the others, and its replies go on that person's own thread. Nits
+and disproved findings go into the round summary. Rerunning `record` posts nothing twice.
+
+In review-only mode `record` also opens one thread per finding (status `active`), because the author has
+to see each at its line.
 
 A red build from SKILL.md's Green build step comes before `args`: save the `check-failures` output (one
 object or a list, each with `check` added) and run `<babysit> record --round <n> --build-failures <file>`,
@@ -76,7 +79,7 @@ with `<n>` the round about to start. It posts `R<n>-B<k>` threads, and `state` s
 resolved: the fixer handles them like findings, `reply` closes them, and then `args` builds the round on the
 fixed head. Build threads show in the round's summary but never make a round unclean.
 
-## 3. Fixing, pushing, resolving
+## 3. Fixing, pushing, replying
 
 1. Spawn one fixer with the Agent tool: `model` and `effort` = the tier's `model` and `effort` (not
    the session's: a fix with a failing test is well-scoped work, and the tier already sizes the model for
@@ -90,50 +93,68 @@ fixed head. Build threads show in the round's summary but never make a round unc
 3. Run the checks yourself on the pushed head; never take the fixer's word for them:
    `<checks> run --base <mergeBase> --target origin/<target> --repo <wt> > <scratch>/round-<n>-checks.json`.
    A failure goes back to the fixer, one effort level higher (never above `high`): effort comes before a
-   bigger model. Exit code 3 means the profile has no checks block: run its Checks
-   section's fast check by hand and write `{"status":"none"}` to the file.
-4. `<babysit> reply --fixer <scratch>/round-<n>-fixer.json --checks <scratch>/round-<n>-checks.json` posts
-   the Fixed, Declined and Needs replies and sets each status. It refuses while the checks failed or ran on
-   another head. It lists in `unproven` every `fixed` whose commit does not exist or has no proof, and posts
-   nothing for those: send them back to the fixer once, then run `reply` again with `--escalate-unproven`,
-   which turns them into questions for the user.
+   bigger model. Exit code 3 means the profile has no checks block: run its Checks section's fast check
+   by hand and write `{"status":"none"}` to the file.
+4. `<babysit> reply --fixer <scratch>/round-<n>-fixer.json --checks <scratch>/round-<n>-checks.json` records
+   every outcome on the log and posts only what a person has to see:
+   - **fixed with proof:** nothing of its own. It is a row in the round summary, and its commit says the
+     rest. (A finding that came from a person's comment gets its Fixed reply on their thread.)
+   - **declined:** one thread at the code line, resolved, with the verdict and the finding in one comment.
+     It goes on the 👀 list.
+   - **escalated:** one thread at the code line, status `pending`, with the ask, the finding and the
+     options in one comment. It prints these in `decisions`, each with its thread's URL.
+
+   It refuses while the checks failed or ran on another head. It lists in `unproven` every `fixed` whose
+   commit does not exist or has no proof, and records nothing for those: send them back to the fixer once,
+   then run `reply` again with `--escalate-unproven`, which turns them into questions for the user.
 
 ## 4. Asking the user
 
-`reply` has already posted a Needs reply on every escalated thread and set it `pending`; it prints their
-ids in `decisions`. Put them into one chat message (Decisions template): numbered, each with its options,
+Put the round's `decisions` into one chat message (Decisions template): numbered, each with its options,
 what each costs, and your recommendation, answerable in one line like `1A 2B`. Send a push notification,
 then end the turn. Fixes that don't depend on the answers are already pushed by then.
 
-When the user answers, write their choice per finding to `round-<n>-choices.json`
-(`{ "R2-F3": "keep the route one more release (option A)" }`), run a second fixer pass for the decided
-findings only, push, run the checks again, and `<babysit> reply --fixer <…-fixer-decisions.json> --checks
-<…> --choices <scratch>/round-<n>-choices.json`, which posts the Decided replies.
+When the user answers, write their choice per finding to `round-<n>-choices.json`, with the option's
+letter so the metrics can tell whether the recommendation was taken:
+
+```json
+{ "R2-F3": { "option": "A", "text": "keep the route one more release" } }
+```
+
+Run a second fixer pass for the decided findings only, push, run the checks again, and `<babysit> reply
+--fixer <…-fixer-decisions.json> --checks <…> --choices <scratch>/round-<n>-choices.json`, which posts the
+Decided reply on each decision's thread and resolves it.
 
 ## 5. Closing a round
 
-`<babysit> summary` records the round's metrics (tokens from this session's transcripts, findings,
-outcomes; measure-prs reads them), then posts the round summary with every outcome, what the skeptics
-disproved, the nits, the reviewed commit, and the hidden state and metrics markers. Its `next` says what
-comes after; `--print` shows the summary without posting or recording anything. A metrics failure never
-blocks the summary; mention it in one line.
+`<babysit> summary` records the round's metrics (tokens and their price from this session's transcripts,
+findings, outcomes, whether recommendations were taken; measure-prs reads them), then adds the round
+summary to the log: every finding with its outcome, what the skeptics disproved, the nits, the reviewed
+commit, and the hidden state and metrics markers. Its `next` says what comes after; `--print` shows the
+summary without posting or recording anything. A metrics failure never blocks the summary; mention it in
+one line.
 
 When the PR ends, record it once: `node <base>/../measure-prs/scripts/measure.mjs pr --repo <wt> --pr <id>
 --pr-url <webUrl> --tier <tier> --score <score> --outcome merged|accepted|stopped|abandoned --started <the
-triage's published time from state> --scratch <scratch> [--merge-commit <sha> [--commits <n>]]`. Post its marker as a reply on the report thread
-(or, without one, on the triage thread): `🤖 Review metrics recorded.` and the marker,
-`--key pr-babysit:metrics`, status `closed`.
+triage's published time from state> --scratch <scratch> [--merge-commit <sha> [--commits <n>]]`. Post its
+marker as a reply on the log thread (`state` → `log.id`): `🤖 Review metrics recorded.` and the marker,
+`--key pr-babysit:metrics`.
 
-## 6. Thread statuses
+## 6. What is on the PR afterwards
 
-babysit.mjs sets these; the table is for reading a PR.
+babysit.mjs sets all of this; the table is for reading a PR.
 
-| Outcome | Status |
-|---|---|
-| finding posted, or a person's claim confirmed and not fixed yet | `active` |
-| waiting for the user's decision | `pending` |
-| fixed, or decided and done | `fixed` |
-| declined as a false positive, a person's claim refuted, a question answered, decided without a change | `closed` |
-| declined as by design | `byDesign` |
-| declined as real but out of scope (say where it is tracked) | `wontFix` |
-| triage, round summaries, report | `closed` |
+| On the PR | Key | Status |
+|---|---|---|
+| the log: triage, then per round its findings, outcomes and summary, then the report and the metrics, as replies | `pr-babysit:triage` | `closed` |
+| a decision waiting for the user | `pr-babysit:R<n>-F<k>` | `pending`, then `fixed` or `closed` once decided |
+| a declined finding: false positive | `pr-babysit:R<n>-F<k>` | `closed` |
+| a declined finding: by design | `pr-babysit:R<n>-F<k>` | `byDesign` |
+| a declined finding: real but out of scope (say where it is tracked) | `pr-babysit:R<n>-F<k>` | `wontFix` |
+| a red build before a round | `pr-babysit:R<n>-B<k>` | `active`, then `fixed` |
+| a person's thread: claim confirmed and not fixed yet | theirs | `active` |
+| a person's thread: fixed, refuted or answered | theirs | `fixed` or `closed` |
+| review-only mode: every finding | `pr-babysit:R<n>-F<k>` | `active`, for the author |
+
+A PR reviewed before version 4.6 has one thread per finding, one per round summary and a report thread;
+`state` reads both layouts, and a later round on such a PR continues in the new one.

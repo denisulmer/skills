@@ -186,7 +186,7 @@ function completionOptions(opts) {
 export const commands = {
   async context(c) {
     const self = await me(c);
-    return { platform, org: c.org, project: c.project, repo: c.repo, prId: c.prId ?? null, prWebUrl: c.prId ? prWebUrl(c) : null, repoWebUrl: repoWebUrl(c), me: self };
+    return { platform, org: c.org, project: c.project, repo: c.repo, prId: c.prId ?? null, prWebUrl: c.prId ? prWebUrl(c) : null, repoWebUrl: repoWebUrl(c), limits: { description: DESCRIPTION_LIMIT }, me: self };
   },
 
   async find(c, _pos, opts) {

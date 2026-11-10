@@ -6,8 +6,8 @@
 //   node acmap.mjs --spec <docs/specs/…md> --base <ref> [--head HEAD] [--repo <path>]
 //
 // ACs are spec lines of the form `- **AC3:** <statement> · *verified by* <test | manual: … | adr: …>`
-// (spec-feature/references/spec-format.md). A commit names an AC with the trailer
-// `Refs: spec <slug> AC3` (that trailer line, with this spec's slug); a test carries the id in its name or
+// (spec-feature/references/spec-format.md). A commit names an AC with the trailer `Refs: <ticket key> AC3`
+// when the spec lives in a ticket, else `Refs: spec <slug> AC3` (that trailer line); a test carries the id in its name or
 // description (`AC3`, `TestAC3_…`, `test_ac3`: any case, no digit touching it). An AC whose statement is struck through (`~~…~~`) was dropped.
 
 import { readFileSync, realpathSync } from 'node:fs';
@@ -22,7 +22,7 @@ const PROSE = /\.(md|mdx|txt|adoc|rst)$/i;
 export const isTestFile = (file) => !PROSE.test(file) && (TEST_FILE.test(file) || MORE_TESTS.test(file));
 
 const AC_LINE = /^\s*[-*]\s*\*\*(AC\d+):\*\*\s*(.+?)\s*$/;
-const VERIFIED = /\s*·\s*\*verified by\*\s*(.+)$/i;
+const VERIFIED = /\s*·\s*[*_]verified by[*_]\s*(.+)$/i;
 
 export function parseSpec(text) {
   const front = text.replace(/\r\n/g, '\n').match(/^---\n([\s\S]*?)\n---/)?.[1] ?? '';
@@ -38,11 +38,12 @@ export function parseSpec(text) {
     const dropped = statement.startsWith('~~');
     acs.push({ id: m[1], statement, verifiedBy: by, testable: !dropped && /^test\b/i.test(by), dropped });
   }
-  return { title: field('title'), status: field('status'), slug: field('slug'), branch: field('branch'), acs };
+  return { title: field('title'), status: field('status'), slug: field('slug'), ticket: field('ticket'), branch: field('branch'), acs };
 }
 
-// The slug from the front matter, else from the file name (<YYYY-MM-DD>-<slug>.md).
-const slugOf = (parsed, spec) => parsed.slug ?? basename(spec, '.md').replace(/^\d{4}-\d{2}-\d{2}-/, '');
+// What a commit's trailer names: the ticket's key when the spec lives in a ticket, else the slug from the
+// front matter, else the one in the file name (<YYYY-MM-DD>-<slug>.md).
+const slugOf = (parsed, spec) => parsed.ticket ?? parsed.slug ?? basename(spec, '.md').replace(/^\d{4}-\d{2}-\d{2}-/, '');
 const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export function acMap({ spec, base, head = 'HEAD', repo = '.' }) {
@@ -72,7 +73,7 @@ export function acMap({ spec, base, head = 'HEAD', repo = '.' }) {
     // In test names the id sits inside identifiers (TestAC1_Refused, test_ac1): any case, not next to a digit.
     const inTest = new RegExp(`(?<![0-9])${ac.id}(?![0-9])`, 'i');
     // Only the trailer line counts: an amendment's body may mention an AC it does not build.
-    const trailer = new RegExp(`^Refs:\\s*spec\\s+${escape(slug)}\\b.*\\b${ac.id}\\b`, 'im');
+    const trailer = new RegExp(`^Refs:\\s*(?:spec\\s+)?${escape(slug)}\\b.*\\b${ac.id}\\b`, 'im');
     return {
       ...ac,
       commits: commits.filter((c) => trailer.test(c.body)).map((c) => `${c.sha.slice(0, 7)} ${c.subject}`),

@@ -195,7 +195,9 @@ const SPEC_LENSES = new Set(['standards-spec', 'generalist'])
 
 function specText(full) {
   if (!spec) return ''
-  const where = `Specification: ${repo.worktree}/${spec.path} ("${spec.title}").`
+  // A spec on the branch is a path in the repository; one read out of a ticket is a file elsewhere on disk.
+  const file = /^([A-Za-z]:)?\//.test(spec.path) ? spec.path : `${repo.worktree}/${spec.path}`
+  const where = `Specification: ${file} ("${spec.title}").`
   if (!full) return `${where} Read it when a finding depends on what the change must do.`
   const acs = spec.acs.map((a) => `${a.id} ${a.statement.replace(/\.$/, '')}`).join('; ')
   const missing = spec.missingTests.length ? ` No test carries the id of: ${spec.missingTests.join(', ')}.` : ''

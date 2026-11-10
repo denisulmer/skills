@@ -1,28 +1,37 @@
 ---
 name: babysit-pr
-description: Shepherd a pull request (GitHub, GitLab, Azure DevOps, or a branch in a plain git repository) from review to merge - score its risk, run as many review rounds as that risk calls for (more reviewers, stronger models and skeptics as the score rises), record every round and finding as PR threads, fix what can be fixed with proof, ask the user only the decisions that are theirs, rewrite the PR description with a review report, and after the user confirms, merge it and watch the merge through. Use when the user says "babysit", "shepherd", "see this PR through", "take this PR to merge", "review and fix my PR until it's ready", or hands over a PR or branch to get merged. Not for a single quick review or a question about a PR.
+description: Take a pull request from review to merge on GitHub, GitLab, Azure DevOps or plain git - score its risk, review it in rounds sized by that risk, fix what can be fixed with proof, ask the user only the decisions that are theirs, and merge after their yes. It posts one log thread and a thread of its own only where a person is needed. Use when the user says "babysit", "shepherd", "see this PR through", "review and fix my PR until it's ready", or hands over a PR or branch to get merged. Not for a single quick review or a question about a PR.
 ---
 
 # PR babysitter
 
 ```
 babysit-pr <id|url|branch>
- 0 Set up    PR, mode (owner / review-only), repo profile, worktree, resume point
- 1 Triage    score-pr → score, tier → triage thread
- 2 Rounds    review (workflow) → record (threads) → fix (fixer agent) → decide (grill you)
-             → push, reply, resolve → stop when the tier's clean-round rule is met
- 3 Report    PR description rewritten as a review summary + full report thread → notify you
+ 0 Set up    PR, mode (owner / review-only), repo profile, ticket, worktree, resume point
+ 1 Triage    score-pr → score, tier → the log thread
+ 2 Rounds    review (workflow) → record → fix (fixer agent) → decide (ask you)
+             → push, reply → stop when a round is clean
+ 3 Report    PR description rewritten as the cover page, the rest on the log → notify you
  4 Gate      wait for your "merge" in this chat
  5 Merge     merge-pr → done
 ```
 
 Paths below are relative to this skill's base directory. The sibling skills sit beside it:
 `<pr-host>` = `node <base>/../pr-host/scripts/pr-host.mjs`, score-pr in `<base>/../score-pr`, merge-pr in
-`<base>/../merge-pr`. `<pr-host>` works the same on GitHub, GitLab, Azure DevOps and plain git (`local`);
-its SKILL.md lists the few differences.
+`<base>/../merge-pr`, setup-repo in `<base>/../setup-repo`, sync-ticket in `<base>/../sync-ticket`.
+`<pr-host>` works the same on GitHub, GitLab, Azure DevOps and plain git (`local`); its SKILL.md lists the
+few differences.
 
 ## Ground rules
 
+- **The user's attention is what this skill saves.** A person who has to read everything ends up approving
+  everything. Post and say as little as you can: only a decision (❓) or a call they may disagree with (👀)
+  reaches them; everything else is one line in the log. [references/style.md](references/style.md) has the
+  rules, the chat budget and every message you send.
+- **Nothing is magic.** Say at the start what you use and why (style.md's start line): the profile and
+  whether it was only drafted, the tier with its model and effort, the ticket. Never raise a model or an
+  effort yourself: every reviewer, skeptic and fixer runs on what its tier names in
+  `references/tiers.json`, whatever this session's model is. This session only conducts.
 - **The PR is the state.** Everything this skill posts carries a key (`pr-babysit:triage`,
   `pr-babysit:R2-summary`, `pr-babysit:R2-F3`, `pr-babysit:report`), so any session can read the PR and
   carry on. Do not keep progress anywhere else that matters. Keys keep the `pr-babysit:` prefix from
@@ -38,27 +47,29 @@ its SKILL.md lists the few differences.
   `<scratch>/dry-run/requests.jsonl` instead of on the PR. Do not push either: append each `git push`
   you would have run to `<scratch>/dry-run/pushes.txt`. Stop at the merge gate, and show the user what
   would have been posted.
-- **Make the user's review cheap.** Their attention is the scarce resource this skill exists to save.
-  Everything you write, on the host or in chat, follows [references/style.md](references/style.md):
-  the outcome or the ask comes first, only ❓ items interrupt them, 👀 items are one line each, and the
-  rest is quiet audit trail.
-- **Read [references/rounds.md](references/rounds.md) before the first round.** It has the workflow
-  arguments, the recording order and the thread-status table.
+- **Read [references/rounds.md](references/rounds.md) before the first round.** It names the babysit.mjs
+  command for each step.
 
 ## 0. Set up
 
 1. **PR.** From the argument, or `<pr-host> find --branch <current branch>`. No PR yet for a pushed branch:
    open one as a draft, `<pr-host> open --source <branch> [--target <branch>] --title <title> --draft` (on
    `local` this starts a review). `<pr-host> show <pr>` must say `status: active`.
-2. **Mode.** `isMine: true` → owner mode: review, fix, push, resolve, report, merge. Otherwise
-   **review-only**: review and post findings, never push to someone else's branch, never change their
-   description or thread statuses; the report goes into the report thread only.
+2. **Mode.** `isMine: true` → owner mode: review, fix, push, report, merge. Otherwise **review-only**:
+   review and post findings, never push to someone else's branch, never change their description or
+   thread statuses.
 3. **Profile.** `node <base>/../score-pr/scripts/signals.mjs --which-profile --base origin/<target> --repo <repo>`
    gives the repository profile and its text: yours from `~/.claude/pr-profiles/`, or the repo's
    `.claude/pr-profile.md` as committed on the target branch. Its Checks, Conventions and Merge sections
-   steer the fixer and the merge. No profile: tell the user once that the setup-repo skill drafts one, and
-   use the repo's own agent guides meanwhile.
-4. **Worktree.** Work in a detached worktree at the PR head beside the main checkout, never in a checkout
+   steer the fixer and the merge. **No profile:** run setup-repo's quick setup now (it asks nothing and
+   takes a few minutes), then carry on with the profile it saved. `calibrated: false` means nobody has
+   calibrated it yet: say so in the start line and once more at the merge question.
+4. **Ticket.** When build-feature passed one, or the PR's title, branch or description names a ticket key
+   and this session has the tracker's tools: read it as sync-ticket's Reading a ticket says. A ticket with
+   a Specification gives `<scratch>/spec.md`; pass it to every `args` call as `--spec-file`, so the
+   reviewers judge the change against its acceptance criteria. No ticket, or no tracker tools: carry on
+   without; a spec file on the branch is found by itself.
+5. **Worktree.** Work in a detached worktree at the PR head beside the main checkout, never in a checkout
    with uncommitted changes:
    ```
    git -C <repo> fetch origin <source> <target>
@@ -68,22 +79,25 @@ its SKILL.md lists the few differences.
    Run every git command with `git -C <worktree>`. A repository without a remote has no `origin/`: use the
    branch names themselves, skip the fetches, and "push" means updating the source branch from the
    worktree (`git -C <worktree> branch -f <source> HEAD` while it is not checked out elsewhere).
-5. **Scratch.** A directory `pr-<id>` in the session scratchpad for comment bodies, args and repro files.
-6. **Resume.** `node <base>/scripts/babysit.mjs state --pr <pr> --repo <worktree>` reads the PR back: tier,
-   closed rounds, open findings, people waiting for an answer, and `next` (what to do and why). Tell the
-   user in one line where you pick up, then continue there.
+6. **Scratch.** A directory `pr-<id>` in the session scratchpad for comment bodies, args and repro files.
+7. **Resume.** `node <base>/scripts/babysit.mjs state --pr <pr> --repo <worktree>` reads the PR back: tier,
+   closed rounds, findings and their outcomes, people waiting for an answer, the cost so far, and `next`
+   (what to do and why). Continue there.
 
-This runs for hours of wall-clock. If this session has unrelated work in flight, suggest a session of its own.
-The session only conducts: every reviewer, skeptic and fixer runs on the model and effort its tier names in
-`references/tiers.json`, whatever the session's model is. Never raise them yourself.
+This runs for a while. If this session has unrelated work in flight, suggest a session of its own: what
+this session has read stays in its context for every later step.
 
 ## 1. Triage
 
-Run the **score-pr** skill on the PR; it leaves the score as JSON (score.mjs's output). Write the PR's
-intent, two or three sentences from its description and linked work item, to `<scratch>/intent.txt`.
-Then `node <base>/scripts/babysit.mjs triage --pr <pr> --repo <worktree> --risk <score.json> --intent-file
-<scratch>/intent.txt --scratch <scratch>` posts the triage thread; every round reads tier, score and intent
-back from it. Send the Triage line in chat and go straight on.
+Score the PR in a subagent, so the diff it reads does not stay in this session: Agent tool, `model: opus`,
+`effort: medium`, description `score: PR <id>`, prompt "Read `<base>/../score-pr/SKILL.md` and follow it
+for PR <id> in <worktree>. Write its JSON block to `<scratch>/risk.json` and return only the short text
+for people." Then write the PR's intent to `<scratch>/intent.txt`: two or three sentences from its
+description and linked work item, and, when the ticket or work item states acceptance criteria, those as
+a list, because the reviewers may not look the ticket up themselves. `node <base>/scripts/babysit.mjs
+triage --pr <pr> --repo <worktree> --risk <scratch>/risk.json --intent-file <scratch>/intent.txt --scratch
+<scratch>` posts the triage, which is the review's log thread from here on; every round reads tier, score
+and intent back from it. Send the start line in chat and go straight on.
 
 ## 2. Review rounds
 
@@ -111,14 +125,17 @@ Per round:
    of one defect already merged into one), nits, what the skeptics refuted, and verdicts on people's
    comments, or `valid: false` when agents failed: then post nothing and follow rounds.md §1, where a
    5-hour usage limit retries by itself.
-4. **Record.** `babysit.mjs record`: one inline thread per finding, a reply on each person's thread.
+4. **Record.** `babysit.mjs record` puts the findings on the log and answers each person's thread. No
+   finding gets a thread yet.
 5. **Fix** (owner mode). One fixer subagent per round, briefed with
    [references/fixer.md](references/fixer.md). It commits one finding per commit and returns a decision
-   for each: fixed, declined, or escalate. Push, run the checks yourself, then `babysit.mjs reply`.
+   for each: fixed, declined, or escalate. Push, run the checks yourself, then `babysit.mjs reply`: a fix
+   with proof stays a line in the log, a decline and a question each get one thread at the code line.
 6. **Decide.** All of the round's escalations go to the user in one Decisions message, answerable in one
    line, with a push notification. Once answered, a second fixer pass carries out the decisions; push,
-   reply, resolve.
-7. **Close.** `babysit.mjs summary` records the metrics and posts the round summary.
+   reply.
+7. **Close.** `babysit.mjs summary` records the metrics and adds the round summary to the log. In chat,
+   at most the one line per round.
 8. **Stop or go on.** `babysit.mjs state` applies this rule as `next`. A full round is clean when it
    kept no finding at or above the tier's `severityBar`. A follow-up round is clean when it kept no
    major or blocker finding: a minor in a fix is fixed and listed, and never buys another round.
@@ -130,22 +147,23 @@ Per round:
 
 ## 3. Report
 
-Follow [references/report.md](references/report.md): the description (≤ 4,000 characters),
-the full report thread, and for a critical PR the smoke check and the rollback plan. Publish a draft PR
-now, not earlier, so reviewers get no notifications while the rounds churn. Then send the "review
-finished" push notification.
+Follow [references/report.md](references/report.md): the report reply on the log, then the description
+(≤ 4,000 characters) as the cover page, and for a critical PR the smoke check and the rollback plan.
+Publish a draft PR now, not earlier, so reviewers get no notifications while the rounds churn. Then send
+the "review finished" push notification.
 
 ## 4. Merge gate
 
 Send the Merge question from style.md: outcome counts, anything open, approvals a person still owes
-(`approval` in merge-pr's preflight), the 👀 list, and "merge?". Only an
-explicit yes here counts. If new commits or comments arrive while you wait, run another round when they
-change code (`args` opens the finished review again for them); answer comments that don't.
+(`approval` in merge-pr's preflight), the 👀 list, the cost (`cost.line` from `state`), the line about a
+drafted profile when it applies, and "merge?". Only an explicit yes here counts. If new commits or
+comments arrive while you wait, run another round when they change code (`args` opens the finished review
+again for them); answer comments that don't.
 
 ## 5. Merge
 
-Run the **merge-pr** skill on the PR, passing the worktree path so it can fix CI or conflicts and clean
-the worktree up afterwards.
+Run the **merge-pr** skill on the PR, passing the worktree path and the ticket, so it can fix CI or
+conflicts, clean the worktree up and leave the ticket its one comment.
 
 ## Metrics
 
@@ -156,9 +174,10 @@ the merge. Metrics never block the PR: when the script fails, say so in one line
 
 ## Review-only mode
 
-Triage and rounds as above, minus fixing, pushing and resolving. One round per head commit: when the
-author pushes, the next round is a delta round over what changed. Findings stay `active` for the author. The report is a
-thread; the description and the merge belong to the author.
+Triage and rounds as above, minus fixing, pushing and resolving. Every finding is posted as its own
+thread, so the author sees it at the line; findings stay `active` for them. One round per head commit:
+when the author pushes, the next round is a follow-up round over what changed. The report is a reply on
+the log; the description and the merge belong to the author.
 
 ## Notifications
 

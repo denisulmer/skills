@@ -17,6 +17,7 @@ repository, and the committed profile is read from git, not from a working tree.
 ~~~markdown
 ---
 name: <owner>-<repo>
+calibrated: false       # only in a profile draft.mjs wrote and nobody has calibrated; take it out once calibrated
 remotes:                # yours only; leave out of a committed profile
   - github.com/<owner>/<repo>
 paths:                  # yours only, for a repository without a remote
@@ -52,7 +53,12 @@ One paragraph: what runs here and where its written standards live.
 
 ## Conventions a fix must keep
 ## Merge               — strategy (merge | squash | rebase | rebase-merge) and whether to delete the source branch
+## Tickets             — optional: where work is tracked, and what differs from sync-ticket's defaults
 ~~~
+
+A profile with `calibrated: false` is a first draft that `setup-repo/scripts/draft.mjs` wrote from the
+repository's files when a skill met the repository without a profile. It works; the skills say that it is
+a draft at the start of a run and at the merge question, until the setup-repo skill has calibrated it.
 
 ## Rule fields
 

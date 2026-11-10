@@ -1,10 +1,14 @@
 # Spec format
 
-One file per feature: `docs/specs/<YYYY-MM-DD>-<slug>.md` (or the place the profile's Conventions name),
-committed as the first commit of the feature branch and merged with the code. It stays as history: what
-was asked for and decided, next to the code that does it. build-feature builds from it, the reviewers judge
-against it, and `build-feature/scripts/acmap.mjs` checks its acceptance criteria mechanically, so keep the
-shapes below exact.
+One spec per feature. **With a ticket** it lives in the ticket, as the Specification section of its
+description: the sync-ticket skill writes it there from the working copy `<scratch>/spec.md` and reads it
+back in every new session; nothing is committed. Its front matter then has `ticket: <KEY>` instead of a
+`slug`, the status line of the section shows status, risk, branch and PR, and the `# Title` is the
+ticket's summary. **Without a ticket** it is one file, `docs/specs/<YYYY-MM-DD>-<slug>.md` (or the place
+the profile's Conventions name), committed as the first commit of the feature branch and merged with the
+code. Either way build-feature builds from it, the reviewers judge against it, and
+`build-feature/scripts/acmap.mjs` checks its acceptance criteria mechanically, so keep the shapes below
+exact.
 
 ~~~markdown
 ---
@@ -15,7 +19,7 @@ created: 2026-11-02
 approved:                    # 2026-11-02 by <name>, set when the user approves
 branch: feature/supplier-key-expiry
 pr:                          # set by build-feature when it opens the PR
-ref:                         # optional: a ticket key or link, if one exists
+ticket:                      # the ticket's key when the spec lives in a ticket (then no slug is needed)
 risk: medium 50              # the forecast: tier and score
 ---
 
@@ -73,7 +77,9 @@ None.
 - **Open questions** must say `None.` before the spec can be approved.
 - **Status:** `draft` while it is being written; `approved` with date and name once the user says so in
   chat (the only way it becomes approved). build-feature fills in `pr:` when it opens the PR, before the
-  review. Nothing is written at the merge: a spec on the default branch has shipped, with the PR its `pr:`
-  names (and git says when).
+  review. Nothing is written to the spec at the merge: a spec file on the default branch has shipped, with
+  the PR its `pr:` names (and git says when); a ticket gets one comment from merge-pr.
+- **Commits** name their criterion in a trailer: `Refs: <KEY> AC3` with a ticket, `Refs: spec <slug> AC3`
+  without.
 - **Amendments:** a change after approval needs the user's yes again and a dated line here; the ACs and
   decisions above are edited to match.

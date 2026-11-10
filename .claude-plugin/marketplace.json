@@ -11,24 +11,25 @@
     {
       "name": "denisulmer-skills",
       "source": "./",
-      "description": "From feature idea to merged code on GitHub, GitLab, Azure DevOps or plain git: an approved spec with testable acceptance criteria, a build AC by AC, a 0-100 risk score, tiered review rounds with fixes recorded as PR threads, a watched merge, metrics that show what reviews cost and find, and a setup skill that teaches them each repository.",
-      "version": "4.5.0",
+      "description": "From a ticket to merged code on Azure DevOps, GitHub, GitLab or plain git, asking you only what is yours to decide: a spec with testable acceptance criteria written into the ticket, a build criterion by criterion, a 0-100 risk score, review rounds sized by that risk that post one log thread and a thread only where a person is needed, a watched merge, and metrics that show what reviews cost and find.",
+      "version": "4.6.0",
       "author": {
         "name": "Denis Ulmer"
       },
       "homepage": "https://github.com/denisulmer/skills",
       "repository": "https://github.com/denisulmer/skills",
       "license": "MIT",
-      "keywords": ["pull-request", "code-review", "merge", "github", "gitlab", "azure-devops"],
+      "keywords": ["pull-request", "code-review", "merge", "jira", "azure-devops", "github", "gitlab"],
       "strict": false,
       "skills": [
         "./skills/spec-feature",
         "./skills/build-feature",
-        "./skills/setup-repo",
-        "./skills/pr-host",
-        "./skills/score-pr",
         "./skills/babysit-pr",
         "./skills/merge-pr",
+        "./skills/sync-ticket",
+        "./skills/pr-host",
+        "./skills/score-pr",
+        "./skills/setup-repo",
         "./skills/measure-prs"
       ]
     }

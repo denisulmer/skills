@@ -25,7 +25,7 @@
       "model": "sonnet",
       "effort": "high",
       "secondModel": null,
-      "skeptics": false,
+      "skeptics": true,
       "skepticModel": "sonnet",
       "severityBar": "major",
       "maxRounds": 2,
