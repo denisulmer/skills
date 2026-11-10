@@ -1,6 +1,6 @@
 ---
 name: build-feature
-description: Build an approved spec (a ticket's Specification section, or docs/specs/<date>-<slug>.md) acceptance criterion by acceptance criterion - a failing test, the change that passes it and one commit each - close each criterion's sub-task, check every criterion is covered, put spec problems to the user as amendments, then open a draft PR and hand it to babysit-pr. Use when the user says "build the spec", "implement <ticket>", after spec-feature's approval, or to resume a half-built spec. Not for code without an approved spec.
+description: Build an approved spec (a ticket's Specification section or docs/specs/) one acceptance criterion at a time - failing test, pass, one commit each - then open a draft PR for babysit-pr. Use when the user says "build the spec" or "implement <ticket>", after spec-feature's approval, or to resume a half-built spec. Not for code without an approved spec.
 ---
 
 # Build a feature from its spec
@@ -57,8 +57,8 @@ Never take the builder's word for it:
    amendment question (step 4).
 2. `<checks> run --base origin/<target> --target origin/<target> --repo <worktree>`: a failure goes back to
    the builder. Exit code 3: run the profile's prose fast check yourself.
-3. Read each commit's diff briefly against its AC: a test that asserts nothing, or a change that does more
-   than the AC asks, goes back to the builder.
+3. Read each commit's diff against its AC. Done when every test asserts the AC's observable outcome and
+   every change stays inside its AC; a commit that fails either goes back to the builder.
 
 With a ticket, close the sub-task of every AC that passed all three, with its one-line comment
 (sync-ticket's Sub-tasks, step 3).
@@ -91,7 +91,7 @@ When every AC is done, verified and the checks pass:
    PR; with a spec file, commit `docs(spec): link the PR` (trailer `Refs: spec <slug>`) and push, before
    the review starts, so no later push resets anything.
 5. Record the phase: `<measure> phase --name build --repo <worktree> --branch <branch> --pr <id> --started <step 1's time> --scratch <scratch>`.
-   A failing metrics script never blocks; say so in one line.
+   Best-effort: a failure is one line to the user.
 
 ## 6. Review
 

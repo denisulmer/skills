@@ -1,6 +1,6 @@
 ---
 name: spec-feature
-description: Turn a ticket or a feature idea into an approved spec through a conversation, one question at a time - testable acceptance criteria, the user's decisions (one-way doors decided up front), a plan and a risk forecast. The spec goes into the ticket's description as its own section, with one sub-task per criterion, or into docs/specs/ when there is no ticket; then build-feature builds it. Use when the user says "spec this", "work on <ticket>", "let's plan X", "I want to build…" or starts the ticket-to-merge pipeline. Not for a bug fix with an obvious cause or a change already specified.
+description: Turn a ticket or a feature idea into an approved spec through a conversation, one question at a time - testable acceptance criteria, the user's decisions, a plan and a risk forecast, written into the ticket - then hand it to build-feature. Use when the user says "spec this", "work on <ticket>", "let's plan X" or "I want to build…". Not for a bug fix with an obvious cause or a change already specified.
 ---
 
 # Spec a feature
@@ -46,9 +46,9 @@ Use the repository's domain words from here on.
 
 ## 2. Grill
 
-Ask the user one question at a time, each answerable in a line, until nothing is open. The user's
-attention is the scarce resource: never ask what the ticket, the code, the docs or a sensible default
-answers; say the default you took instead and move on.
+Ask the user one question at a time, each answerable in a line, until nothing is open. Be **quiet**: ask
+only what the ticket, the code, the docs and a sensible default leave open; for the rest, say the default
+you took and move on.
 
 - **Use AskUserQuestion** for each question: two to four options, the recommended one first and marked,
   each with what it costs. Free-text questions only when options would be guesses.
@@ -110,7 +110,7 @@ Only an explicit approval in this chat counts. Then:
    the Specification section and Sub-tasks say. Nothing is committed.
    **Without:** commit the spec alone on the branch: `docs(spec): <title>`, body with the forecast line.
 3. Record the phase: `<measure> phase --name spec --repo <worktree> --branch <the branch> --started <step 1's time> --scratch <scratch>`.
-   A failing metrics script never blocks; say so in one line.
+   Best-effort: a failure is one line to the user.
 4. Run the **build-feature** skill with the ticket (or the spec's path) and the worktree. The user chose
    the chain to run on its own from here to babysit-pr's merge question.
 

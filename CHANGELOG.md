@@ -2,6 +2,21 @@
 
 Each `## <version>` section becomes the notes of the GitHub release `v<version>`. Newest first.
 
+## 4.6.1
+
+The skills say the same in fewer words: about 1,500 fewer are read on every babysit-pr run, and the skill
+descriptions that sit in every session are a third shorter. Nothing to do.
+
+- **Less for the agent to read.** style.md no longer copies the comments `babysit.mjs` posts, rounds.md no
+  longer copies its status table, and notes about older versions are gone; the scripts already handle them.
+  babysit-pr's round steps point to rounds.md instead of repeating it.
+- **Said positively.** Instructions that listed what not to do now say what to do (chat holds four kinds of
+  message; reviewers stay inside the repository; spec-feature asks only what nothing else answers).
+- **One word for one idea:** *quiet* for "only what needs a person reaches them", *best-effort* for metrics
+  that never block, *conductor* for the session that runs the agents.
+- **Clearer stopping points** for quick setup's check commands and build-feature's diff review.
+- **One sign-in table**, in pr-host; setup-repo points to it. Rehearsal moved into rounds.md.
+
 ## 4.6.0
 
 A review now posts only what you have to read, the pipeline starts at a ticket, and nothing needs setup

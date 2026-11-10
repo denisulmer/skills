@@ -92,7 +92,7 @@ test('critical, full round: one finding per defect, one skeptic pass, a second s
   assert.equal(result.coverage.agents, calls.length);
   assert.equal(result.clean, false);
   assert.deepEqual(result.findings.map((f) => f.id), ['R1-F1', 'R1-F2', 'R1-F3', 'R1-F4', 'R1-F5']);
-  assert.match(prompts['skeptic:majors-1'], /do not look up tickets/);
+  assert.match(prompts['skeptic:majors-1'], /stay inside the repository/);
   assert.match(prompts['review:standards-spec'], /Read the linked work item/);
   assert.match(prompts['review:correctness-domain'], /a test would fail if the code were wrong/);
 });

@@ -1,6 +1,6 @@
 ---
 name: score-pr
-description: Score how dangerous a pull request or branch is, 0-100, from its blast radius and whether it is a one-way or two-way door, and name the review tier that follows (trivial, low, medium, high, critical). Use when the user asks how risky a PR or change is, "is this a one-way door", "what's the blast radius", or how much review a change deserves. babysit-pr runs it as its first step.
+description: Score how dangerous a pull request or branch is, 0-100, from its blast radius and one-way or two-way door, and name its review tier. Use when the user asks how risky a change is, "is this a one-way door", "what's the blast radius", or how much review it deserves.
 ---
 
 # PR risk

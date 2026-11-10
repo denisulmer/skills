@@ -1,6 +1,6 @@
 ---
 name: setup-repo
-description: Set a repository up for the PR skills - check the platform and the sign-in, and write the repository profile that says what is dangerous where, which checks a fix must pass and how the repository merges. The other skills run its quick setup themselves, with no questions, when a repository has no profile; run it yourself to calibrate that draft against recent merges or to update a profile. Use when the user says "set up the PR skills", "create / update the repo profile", "calibrate the profile" or "teach the risk scorer about this repo".
+description: Write or calibrate the repository profile the PR skills use - what is dangerous where, which checks a fix must pass, how the repository merges. Use when the user says "set up the PR skills", "create / update / calibrate the repo profile" or "teach the risk scorer about this repo".
 ---
 
 # Set up a repository for the PR skills
@@ -16,14 +16,14 @@ it. **Full setup** is what the user asks for: the same draft, completed with the
 ## Quick setup (no questions)
 
 1. `<pr-host> context` names the platform and the signed-in user. A sign-in error is the one thing that
-   stops here: tell the user the one command that fixes it (step 1's table below) and wait.
+   stops here: tell the user the one command that fixes it (pr-host's sign-in table) and wait.
 2. `<draft> --repo <repo> --out <scratch>/pr-profile.md` writes a first profile from what the repository's
    files show: the checks its build files name and the merge strategy its history shows. Its `assumed`
    list says what it took from where.
-3. Spend a few minutes, not more, making the draft true: read the agent guides (`AGENTS.md`, `CLAUDE.md`)
-   and the CI configuration, correct a check's command where the repository runs it differently, and add
-   a danger-map rule for anything obviously special that the defaults miss (a public API, a folder of
-   deployment manifests under an unusual name). Leave everything you are not sure of out.
+3. Make the draft true from the agent guides (`AGENTS.md`, `CLAUDE.md`) and the CI configuration: each
+   check's command matches how CI runs it, and anything obviously special that the defaults miss (a public
+   API, deployment manifests under an unusual name) gets a danger-map rule. Done when every check matches
+   a CI step or a documented command; what you are unsure of stays out.
 4. Run every fast check once: `<checks> run --base origin/<default branch> --all --profile <scratch>/pr-profile.md`.
    Drop each one that fails on a clean branch: a check that does not run is worse than none.
 5. Save it as the user's profile: copy it to `~/.claude/pr-profiles/<name>.md` (`<draft> --save` does this
@@ -41,15 +41,9 @@ it. **Full setup** is what the user asks for: the same draft, completed with the
 2. Self-hosted GitHub or GitLab under a host name pr-host does not recognise comes out as `local`: set
    `git config prhost.platform github` (or `gitlab`) in the repo and run `context` again. The setting is
    shared by every worktree of the repo.
-3. A sign-in error: tell the user the one command that fixes it and wait. Sign-in is theirs to do; never
-   type a token or password yourself.
-
-   | Platform | Sign in |
-   |---|---|
-   | github | `gh auth login` (or `GH_TOKEN`) |
-   | gitlab | `glab auth login --hostname <host>` (or `GITLAB_TOKEN` with scope `api`; for a self-managed host also `GITLAB_HOST=<host>`, since the token is only sent there) |
-   | azure-devops | `az login` (or `AZURE_DEVOPS_EXT_PAT`) |
-   | local | nothing: reviews live in the repo's git directory, merges are local merges plus a push |
+3. A sign-in error: tell the user the one command that fixes it, from the sign-in table in
+   `<base>/../pr-host/SKILL.md`, and wait. Sign-in is theirs to do; never type a token or password
+   yourself.
 
 4. Tools: `node --version` 18 or newer, `git --version` 2.38 or newer. babysit-pr uses Claude Code's
    Workflow tool when it is there and parallel agents when it is not; merge-pr uses Monitor.

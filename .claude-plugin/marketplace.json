@@ -12,7 +12,7 @@
       "name": "denisulmer-skills",
       "source": "./",
       "description": "From a ticket to merged code on Azure DevOps, GitHub, GitLab or plain git, asking you only what is yours to decide: a spec with testable acceptance criteria written into the ticket, a build criterion by criterion, a 0-100 risk score, review rounds sized by that risk that post one log thread and a thread only where a person is needed, a watched merge, and metrics that show what reviews cost and find.",
-      "version": "4.6.0",
+      "version": "4.6.1",
       "author": {
         "name": "Denis Ulmer"
       },

@@ -1,6 +1,6 @@
 ---
 name: measure-prs
-description: Measure what babysit-pr runs cost and what they found - dollars, tokens and wall time per round, where a round's agents spent them, findings kept and refuted per reviewer, decisions and whether the recommendation was taken - find the defects that escaped review (each confirmed by the user), and propose changes to the review tiers or the repository profile backed by those numbers. Use when the user asks what the PR reviews cost, whether a reviewer or a round is worth it, how the tiers should be tuned, "metrics", "how is babysit doing" or "what slipped through review".
+description: Measure what babysit-pr reviews cost and found, find the defects that escaped review, and propose tier or profile changes backed by the numbers. Use when the user asks what reviews cost, whether a reviewer or round is worth it, how to tune the tiers, "how is babysit doing" or "what slipped through review".
 ---
 
 # Measure PR reviews

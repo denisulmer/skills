@@ -144,7 +144,9 @@ const delta = scope === 'delta' && Boolean(repo.sinceSha)
 
 // Only these lenses build or run tests; every other reviewer and every skeptic only reads.
 const RUNNING_LENSES = new Set(['adversary'])
-// Only these lenses judge the change against what was asked, so only they may read the linked work item.
+// Only these lenses judge the change against what was asked: they get the acceptance criteria in their
+// prompt and may read the linked work item. The rest get the spec's path, to read when a finding depends on
+// what the change must do.
 const INTENT_LENSES = new Set(['standards-spec', 'generalist'])
 // One skeptic checks a batch of findings: fewer when they are major, because each takes a closer look.
 const MAJORS_PER_SKEPTIC = 4
@@ -162,7 +164,7 @@ function rules(label, canRun, canLookUp = false) {
     [
       canLookUp
         ? 'Read the linked work item when the intent above leaves open what was asked; look nothing else up outside the repository.'
-        : 'The intent above is all you need about the purpose of this change: do not look up tickets, wikis or anything else outside the repository.',
+        : 'The intent above is the whole purpose of this change; stay inside the repository.',
       'Send lookups that do not depend on each other (several files, several searches) in one message, not one per turn.',
     ].join(' '),
     canRun
@@ -188,10 +190,6 @@ function scopeText() {
       : 'This is the first review round.',
   ].join('\n\n')
 }
-
-// Only the lenses that judge the change against its spec get the acceptance criteria in their prompt; the
-// rest get the path, to read when a finding depends on what the change must do.
-const SPEC_LENSES = new Set(['standards-spec', 'generalist'])
 
 function specText(full) {
   if (!spec) return ''
@@ -291,7 +289,7 @@ const humanPrompt = (h) =>
 
 agentsStarted += tasks.length + human.length
 const [reviews, humanVerdicts] = await Promise.all([
-  parallel(tasks.map((t) => () => agent(`${LENSES[t.lens]}\n\n${context(t.label, t.portion, RUNNING_LENSES.has(t.lens), SPEC_LENSES.has(t.lens), INTENT_LENSES.has(t.lens))}`, { label: `review:${t.label}`, phase: 'Review', schema: FINDINGS, ...modelOpt(t.model), effort: tier.effort }))),
+  parallel(tasks.map((t) => () => agent(`${LENSES[t.lens]}\n\n${context(t.label, t.portion, RUNNING_LENSES.has(t.lens), INTENT_LENSES.has(t.lens), INTENT_LENSES.has(t.lens))}`, { label: `review:${t.label}`, phase: 'Review', schema: FINDINGS, ...modelOpt(t.model), effort: tier.effort }))),
   parallel(human.map((h) => () => agent(humanPrompt(h), { label: `comment:${h.threadId}`, phase: 'Verify', schema: HUMAN_VERDICT, ...modelOpt(tier.model), effort: tier.effort }))),
 ])
 

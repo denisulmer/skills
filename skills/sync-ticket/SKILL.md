@@ -1,6 +1,6 @@
 ---
 name: sync-ticket
-description: Keep a tracker ticket in step with the work on it - read what the stakeholder wrote, write the specification into its own section of the description without touching their text, create one sub-task per acceptance criterion and close each as it is built, and leave one comment when the work is merged. Jira through the Atlassian connector or an API token; other trackers through their own tools. Use when spec-feature, build-feature, babysit-pr or merge-pr work on a ticket, or when the user says "update the ticket", "put the spec into the ticket" or "create the sub-tasks".
+description: Keep a Jira (or other tracker) ticket in step with the work - the spec in its own section of the description, one sub-task per acceptance criterion, one comment at the merge, the stakeholder's text untouched. Use when the user says "update the ticket", "put the spec into the ticket" or "create the sub-tasks".
 ---
 
 # Keep the ticket in step
@@ -18,9 +18,9 @@ ticket gets no spec file.
 | that sub-task closed, with one line: the commit and the test | the sub-task | when its criterion is built and the checks pass |
 | one comment: merged, and what is left to verify by hand | the ticket | after the merge |
 
-Nothing else. Never change a word above the Specification heading, another field, an assignee, or the
-status of the ticket itself: say what its status is and leave moving it to the user. Every comment costs a
-stakeholder attention, so there is one on the ticket and one line per sub-task.
+Nothing else, because the ticket is **quiet** too: one comment on it, one line per sub-task. Never change
+a word above the Specification heading, another field, an assignee, or the status of the ticket itself: say
+what its status is and leave moving it to the user.
 
 ## Which tracker, and saying so
 

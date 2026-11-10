@@ -3,7 +3,7 @@
 `<babysit>` = `node <base>/scripts/babysit.mjs`, `<checks>` = `node <base>/../setup-repo/scripts/checks.mjs`.
 babysit.mjs does the bookkeeping: it reads the PR back, builds the round's inputs, and posts everything the
 round leaves on the PR, with its key and status. You do what needs judgment: run the round, brief the
-fixer, check its work, ask the user, push. Never post by hand what babysit.mjs posts.
+fixer, check its work, ask the user, push. What the round leaves on the PR goes through babysit.mjs.
 
 Every command takes `--pr <id> --repo <worktree>`; the round commands also `--round <n> --scratch <scratch>`.
 Its files live in the scratch directory: `round-<n>-args.json`, `round-<n>-result.json`,
@@ -16,7 +16,7 @@ Its files live in the scratch directory: `round-<n>-args.json`, `round-<n>-resul
 3. Fixing, pushing, replying
 4. Asking the user
 5. Closing a round
-6. What is on the PR afterwards
+6. Rehearsal
 
 ## 1. Starting a round
 
@@ -25,8 +25,7 @@ Its files live in the scratch directory: `round-<n>-args.json`, `round-<n>-resul
    SKILL.md's stop rule.
 2. `<babysit> args --target origin/<target> [--tier <tier> --tier-reason "<why>"]` writes
    `round-<n>-args.json` and prints the round, its scope and why. Pass `--tier` only when the refreshed
-   signals lifted the score into a higher tier (it refuses to go down). A PR triaged before version 4.1
-   has no intent on its triage thread: pass `--intent-file <scratch>/intent.txt`. It picks the scope:
+   signals lifted the score into a higher tier (it refuses to go down). It picks the scope:
    - `full`, the tier's lenses over the whole PR: round 1, after the tier went up, and after commits this
      review did not write (no `Refs: pr-babysit` trailer, not the nits commit, not a merge) landed;
    - `delta`, a follow-up round: the tier's `followUpLenses` over only the commits since the last
@@ -131,8 +130,8 @@ Decided reply on each decision's thread and resolves it.
 findings, outcomes, whether recommendations were taken; measure-prs reads them), then adds the round
 summary to the log: every finding with its outcome, what the skeptics disproved, the nits, the reviewed
 commit, and the hidden state and metrics markers. Its `next` says what comes after; `--print` shows the
-summary without posting or recording anything. A metrics failure never blocks the summary; mention it in
-one line.
+summary without posting or recording anything. Metrics are best-effort: a failure is one line to the
+user, never a stop.
 
 When the PR ends, record it once: `node <base>/../measure-prs/scripts/measure.mjs pr --repo <wt> --pr <id>
 --pr-url <webUrl> --tier <tier> --score <score> --outcome merged|accepted|stopped|abandoned --started <the
@@ -140,21 +139,10 @@ triage's published time from state> --scratch <scratch> [--merge-commit <sha> [-
 marker as a reply on the log thread (`state` → `log.id`): `🤖 Review metrics recorded.` and the marker,
 `--key pr-babysit:metrics`.
 
-## 6. What is on the PR afterwards
+## 6. Rehearsal
 
-babysit.mjs sets all of this; the table is for reading a PR.
-
-| On the PR | Key | Status |
-|---|---|---|
-| the log: triage, then per round its findings, outcomes and summary, then the report and the metrics, as replies | `pr-babysit:triage` | `closed` |
-| a decision waiting for the user | `pr-babysit:R<n>-F<k>` | `pending`, then `fixed` or `closed` once decided |
-| a declined finding: false positive | `pr-babysit:R<n>-F<k>` | `closed` |
-| a declined finding: by design | `pr-babysit:R<n>-F<k>` | `byDesign` |
-| a declined finding: real but out of scope (say where it is tracked) | `pr-babysit:R<n>-F<k>` | `wontFix` |
-| a red build before a round | `pr-babysit:R<n>-B<k>` | `active`, then `fixed` |
-| a person's thread: claim confirmed and not fixed yet | theirs | `active` |
-| a person's thread: fixed, refuted or answered | theirs | `fixed` or `closed` |
-| review-only mode: every finding | `pr-babysit:R<n>-F<k>` | `active`, for the author |
-
-A PR reviewed before version 4.6 has one thread per finding, one per round summary and a report thread;
-`state` reads both layouts, and a later round on such a PR continues in the new one.
+When the user asks for a dry run or rehearsal, put `PR_HOST_DRY_RUN=<scratch>/dry-run` in front of every
+`<pr-host>` and `<babysit>` command (shell state does not persist between calls). Writes then land in
+`<scratch>/dry-run/requests.jsonl` instead of on the PR. Append each `git push` you would have run to
+`<scratch>/dry-run/pushes.txt` instead of pushing. Stop at the merge gate, and show the user what would have
+been posted.

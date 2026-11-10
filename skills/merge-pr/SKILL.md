@@ -1,6 +1,6 @@
 ---
 name: merge-pr
-description: Merge a pull request and see it land on GitHub, GitLab, Azure DevOps or plain git - preflight, auto-merge with the repository's merge strategy, watch the checks, fix failing builds and conflicts, answer late comments, clean up the branch and worktree, and leave the ticket its one comment. Use when the user says "merge this PR", "complete the PR", "ship it" or "get this merged", and as babysit-pr's last step once the user confirmed the merge.
+description: Merge a pull request and see it land - auto-merge with the repository's strategy, fix failing builds and conflicts, answer late comments, clean up, one comment on the ticket. Use when the user says "merge this PR", "ship it" or "get this merged", and as babysit-pr's last step after the user's yes.
 ---
 
 # Merge a PR and watch it land
@@ -10,9 +10,9 @@ description: Merge a pull request and see it land on GitHub, GitLab, Azure DevOp
 the merge strategy and the check commands.
 
 Write every comment and chat line by `<base>/../babysit-pr/references/style.md`: its replies to people's
-comments, the Merge progress lines for chat, its notification table. Stay quiet while things go to plan;
-speak up when the state changes in a way the user would care about. Post nothing a person does not have to
-read: what you fix on the way goes on the review's log thread, not into threads of its own.
+comments, the Merge progress lines for chat, its notification table. Be **quiet**: speak up only when the
+state changes in a way the user would care about, and put what you fix on the way on the review's log
+thread.
 
 ## 0. Confirmation
 
@@ -103,8 +103,8 @@ Whenever you have to wait for the user, cancel auto-merge while you wait, and se
 - When the PR has a `pr-babysit:triage` thread, record it before the worktree goes: babysit-pr's rounds.md
   §5, `measure.mjs pr --repo <repo>` (the main checkout, which names the same ledger) with `--outcome merged
   --merge-commit <the merge commit>`, plus `--commits <n>` after a rebase or fast-forward merge of n commits
-  (the escape scan traces later fixes back to the PR through them). A failing metrics script never holds up
-  the merge; say so in one line.
+  (the escape scan traces later fixes back to the PR through them). Best-effort: a failure is one line to
+  the user.
 - When the PR belongs to a ticket and this session has the tracker's tools: leave the ticket its one
   comment (`<base>/../sync-ticket/SKILL.md`, When the work is merged) and tell the user the ticket's
   status in one line. Moving the ticket is theirs.

@@ -2,13 +2,13 @@
 
 Everything babysit-pr, merge-pr and score-pr write has one reader who matters: the user, deciding what
 deserves their attention. A person who has to read everything ends up approving everything. So the review
-posts as little as it can, and what it posts lets them stop reading as early as possible.
+is **quiet**: it posts as little as it can, and what it posts lets them stop reading as early as possible.
 
 ## Contents
 
-1. What a person has to read, and what they never have to
+1. What a person has to read
 2. Rules
-3. On the PR: the log, the two threads, people's comments
+3. On the PR
 4. In chat: the start line, one line per round, decisions, the merge question
 5. Push notifications
 
@@ -22,8 +22,7 @@ posts as little as it can, and what it posts lets them stop reading as early as 
 
 Everything else is the **log**: one closed thread on the PR that holds the triage, each round's findings,
 outcomes and summary, the checks and the original description. It is there for an audit and for resuming;
-nobody has to open it. A finding that was fixed with proof is one line in the log and a commit. It gets no
-thread, no chat line and no notification.
+nobody has to open it. A finding fixed with proof is one line in the log and a commit.
 
 A 👀 item is a call a person may disagree with: a declined finding, a major finding a skeptic disproved, a
 person's comment that was refuted, a fix in a risky area the PR did not touch before, a tier raised mid-way.
@@ -33,108 +32,33 @@ person's comment that was refuted, a fix in a risky area the PR did not touch be
 1. **The first line is the outcome or the ask.** "Needs Denis: keep the route for one more release?",
    "Declined, by design: ADR-0038 allows it". Detail follows for whoever wants it.
 2. **One comment per thing.** A thread that needs a person says the ask or the verdict, and the finding it
-   is about, in its first comment. Nobody should have to read a thread from the top to learn what it wants.
+   is about, in its first comment.
 3. **The same icons everywhere.** Severity: 🔴 blocker · 🟠 major · 🟡 minor · ⚪ nit. Outcome:
    ✅ fixed · ↩️ declined · 🧭 decided by <name> · ❓ needs <name> · ⚠️ unproven.
 4. **Short lines, no walls.** One fact per bullet, at most three sentences per paragraph, a table when
    three or more items share the same fields.
-5. **Never rely on a single newline.** Azure DevOps and GitHub join consecutive lines into one paragraph.
-   Separate lines with a blank line, or make them list items.
+5. **Separate lines with a blank line, or make them list items.** Azure DevOps and GitHub join
+   consecutive lines into one paragraph.
 6. **Evidence goes in a code block**, trimmed to the lines that make the point (ten at most, `…` for
    cuts), with the command named above it.
 7. **Link instead of repeating.** Threads: `<thread url>`. Commits: `<repoWebUrl>/commit/<full sha>`, shown
    as the short sha in backticks.
 8. **Machinery last, in italics.** Who found it, which model, the skeptic's verdict, the round: readers
    skip it, auditors find it.
-9. **The repository's words, not the machinery's.** Domain nouns from `CONTEXT.md`. Say "reviewer",
-   "check", "round". Never mention agents, lenses, prompts, schemas, workflows or tokens on the PR.
+9. **The repository's words.** Domain nouns from `CONTEXT.md`; for the review itself, "reviewer",
+   "check", "round".
 10. **Every PR comment starts with 🤖**, so nobody takes it for something the user typed. Write in a
-    neutral voice ("Checked: …"), not "I", because the comment carries the user's name.
+    neutral voice ("Checked: …"), because the comment carries the user's name.
 
 ## 3. On the PR
 
-`scripts/babysit.mjs` writes everything in this section from the round's results; never post one of these
-by hand. Statuses are pr-host's; on GitHub and GitLab the resolved ones (`fixed`, `wontFix`, `byDesign`,
-`closed`) resolve the thread.
+`scripts/babysit.mjs` posts the log, the findings, the decision and decline threads and the replies on
+people's threads, each with its key and status; `summary --print` shows what a round's summary looks like.
+Statuses are pr-host's; on GitHub and GitLab the resolved ones (`fixed`, `wontFix`, `byDesign`, `closed`)
+resolve the thread.
 
-**The log** (`pr-babysit:triage`, status `closed`). Its first comment is the triage:
-
-~~~markdown
-🤖 **Risk 68/100 · high review**
-
-**68** = blast radius 43 (contract) + door 25 (one-way, recoverable), above the floor of 55
-
-- **Door, one-way:** suppliers' tooling fails the moment the route goes; re-adding it later does not undo those failures.
-- **Blast radius, contract:** the legacy self-service API is called by external supplier systems.
-- **Safe because:** no supplier has called `/account-information` in 90 days. ⚠️ Unproven: round 1 checks this first.
-
-**Plan:** round 1 reviews the whole change (correctness per part, standards and intent, blast radius, adversary) · if it keeps a major finding, follow-up rounds check only the fixes, up to 3 rounds in all · a skeptic checks every finding before it is posted
-~~~
-
-Each round then adds three replies there: what it found (`R<n>-findings`), what became of it
-(`R<n>-outcomes-…`), and its summary (`R<n>-summary`), a table with one row per finding, what the skeptics
-disproved (a disproved major or blocker carries its icon and goes on the 👀 list), the nits, and the
-reviewed commit:
-
-~~~markdown
-🤖 **Round 1 of up to 3 · high review:** ✅ 3 fixed · 🧭 1 decided · ↩️ 1 declined
-
-| | Finding | Outcome |
-|---|---|---|
-| 🟠 | R1-F1 key without expiry gets a 500 | ✅ `1a2b3c4` |
-| 🟠 | [R1-F2](<thread url>) route removal breaks supplier tooling | 🧭 kept one release · `5d6e7f8` |
-| 🟡 | [R1-F4](<thread url>) log line shows the key prefix | ↩️ by design |
-
-**Not clean** (2 at or above major) → round 2 is next, on the fixes only; done once they hold no major finding.
-
-**Disproved before posting:** 1
-
-- 🟠 `Auth.cs:40` wrong status for an expired key: `KeyMiddleware.cs:18` handles it first
-
-_Reviewed `fa6b973` · 6 reviewers (…) · opus high · 1 duplicate report merged · every finding checked by a skeptic (2)_
-~~~
-
-**A decision** (`pr-babysit:R<n>-F<k>`, at the code line, status `pending`): the ask, the finding in two
-sentences, the options. When the user decides, a reply says so and the thread resolves.
-
-~~~markdown
-🤖 ❓ **Needs Denis:** remove the legacy route now, or keep it for one more release?
-
-Route removal breaks supplier tooling. `Routes.cs:40` deletes `/account-information`, and nothing here shows who still calls it. Callers get a 404 the moment this ships.
-
-- **A (recommended):** keep it and send a `Deprecation` header; remove it next release. Safe; one more release of dead code.
-- **B:** remove it now. Clean; any supplier still calling it gets a 404 immediately.
-
-Recommended because nothing proves the route is unused.
-
-The question is waiting in the babysit session.
-
-_R1-F2 · 🟠 major · found by blast-radius · upheld by a skeptic · round 1, high review_
-~~~
-
-~~~markdown
-🤖 🧭 **Decided by Denis:** keep the route for one more release (option A).
-
-Done in [`5d6e7f8`](<commit url>): `Deprecation` and `Sunset` headers on every response.
-~~~
-
-**A decline** (`pr-babysit:R<n>-F<k>`, at the code line, status `closed`, `byDesign` or `wontFix`): the
-verdict with its reason, then the finding. A reply from anyone opens it again for the next round.
-
-~~~markdown
-🤖 ↩️ **Declined, by design:** ADR-0038 allows the key prefix in logs.
-
-**The finding was:** Log line shows the key prefix. `Logging.cs:12` writes the first 8 characters of a supplier key.
-
-Write here if you disagree; the review answers it.
-
-_R1-F4 · 🟡 minor · found by standards-spec · upheld by a skeptic · round 1, high review_
-~~~
-
-In **review-only mode** the PR is someone else's: every finding is posted as its own thread (status
-`active`) so the author sees it at the line, and nothing is fixed or resolved for them.
-
-**People's comments** are answered on their own thread, by the review round:
+What you post by hand (merge-pr's late comments and build fixes) follows the same shapes. Replies on a
+person's thread:
 
 - Confirmed (stays `active` until fixed, then a Fixed reply with cause, change and proof):
   `🤖 **Checked: right.** <file:line and what is wrong>. Tracked as R2-F4; the fix will be linked here.`
@@ -144,9 +68,8 @@ In **review-only mode** the PR is someone else's: every finding is posted as its
 
 ## 4. In chat
 
-**Chat budget.** Between the start line and the merge question you send one line per round at most, plus
-Decisions messages. Do not narrate fixes, list findings or summarize a round in chat: that is what the log
-is for, and every line here is one the user has to read.
+**Chat budget.** Chat holds the start line, at most one line per round, Decisions messages, and the merge
+question. Fixes, findings and round details live in the log.
 
 ### Start line
 
@@ -223,8 +146,7 @@ Run **another round**, **accept** the PR as it is (the finding stays open on the
 
 ### Merge question
 
-The one message the user reads in full. Nothing in it is audit trail: the verdict, what is still owed, the
-👀 list, the cost, the ask.
+The one message the user reads in full: the verdict, what is still owed, the 👀 list, the cost, the ask.
 
 ~~~markdown
 **PR !27887 is ready to merge:** risk 52/100 · medium · 2 rounds, the last one clean
