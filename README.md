@@ -1,38 +1,62 @@
 # skills
 
-My own Claude Code skills. I write them myself so I know what each one does.
+The Claude Code skills I use to take a feature from a Jira ticket to merged code without drowning in
+review comments along the way.
 
-They take a ticket to merged code and ask me only for what is mine to decide:
+## Why they exist
+
+Reviewing AI-written code is tiring. When a pull request comes with dozens of comments, you stop reading
+them carefully and start approving everything, which defeats the point of a review. These skills try to do
+the opposite. They do the routine work themselves and only bring you what needs a person: a product
+decision, a trade-off you might disagree with, and the final "merge it?".
+
+They also try not to be magic. Every run starts by telling you what it is working with: the repository
+profile, how risky the change looks, and which model reviews it. The [user guide](docs/GUIDE.md) explains
+every choice they make on their own and how to change it.
+
+## How a feature moves through them
 
 ```
 ticket ──► spec-feature ──► build-feature ──► babysit-pr ──► merge-pr
 ```
 
-**[The user guide](docs/GUIDE.md)** walks through it: what each step writes where, what you have to read
-and what you can ignore, which model runs what and why, and how to improve every default.
+1. **[spec-feature](skills/spec-feature/SKILL.md)** reads what the stakeholder wrote in the ticket and talks
+   it through with you, one question at a time, until there is a spec with testable acceptance criteria. The
+   spec goes into the ticket under its own *Specification* heading, below the stakeholder's text, which
+   stays untouched. Each criterion gets a sub-task.
+2. **[build-feature](skills/build-feature/SKILL.md)** builds the spec one criterion at a time: a failing
+   test, the code that makes it pass, a commit. It closes each sub-task as it goes and opens a draft pull
+   request.
+3. **[babysit-pr](skills/babysit-pr/SKILL.md)** scores how risky the change is and reviews it to match. A
+   small fix gets a quick look; a change to something hard to undo gets more reviewers, stronger models
+   and a second opinion on every finding. It fixes what it can prove and asks you about the rest. Its notes
+   go into a single log thread, and a finding only gets a thread of its own when you have to decide
+   something.
+4. **[merge-pr](skills/merge-pr/SKILL.md)** merges once you say so. It watches the build, sorts out
+   conflicts and late comments, cleans up the branch, and leaves one comment on the ticket.
 
-## Skills
+Once you approve the spec, the rest runs by itself until the merge question. Each skill also works on its
+own: `babysit-pr` on any pull request, or `spec-feature` with an idea instead of a ticket.
 
-| Skill | What it does |
-|---|---|
-| [spec-feature](skills/spec-feature/SKILL.md) | Turns a ticket or an idea into an approved spec through a conversation: testable acceptance criteria, your decisions, a plan and a risk forecast, written into the ticket |
-| [build-feature](skills/build-feature/SKILL.md) | Builds an approved spec criterion by criterion (failing test, pass, one commit each), closes each sub-task, opens a draft PR |
-| [babysit-pr](skills/babysit-pr/SKILL.md) | Takes a PR from review to merge: review rounds sized by risk, fixes with proof, decisions put to you, one log thread and a thread only where you are needed |
-| [merge-pr](skills/merge-pr/SKILL.md) | Merges a PR and watches it land: auto-merge, failed builds, conflicts, approvals, cleanup, one comment on the ticket |
-| [sync-ticket](skills/sync-ticket/SKILL.md) | Keeps the ticket in step: the Specification section of its description, one sub-task per acceptance criterion, without touching what the stakeholder wrote |
-| [pr-host](skills/pr-host/SKILL.md) | One command line for pull requests on GitHub, GitLab, Azure DevOps or plain git: threads, description, checks, failed logs, auto-merge, watch |
-| [score-pr](skills/score-pr/SKILL.md) | Scores a PR 0-100 from blast radius and one-way/two-way door, names the review tier |
-| [setup-repo](skills/setup-repo/SKILL.md) | Writes the repository profile: drafted by itself on first contact, calibrated against recent merges when you run it |
-| [measure-prs](skills/measure-prs/SKILL.md) | Shows what the reviews cost and found, where a round's money went, which defects escaped review, and proposes tier changes backed by the numbers |
+Behind them are five helpers, which you rarely call yourself:
 
-They ship together as the `denisulmer-skills` plugin, because they call each other. Nothing outside this
-repository is needed besides Node 18+, git 2.38+ and the sign-in for where your code lives. Jira with Azure
-DevOps is the pair they are used with every day; GitHub, GitLab and plain git work through the same
+- **[sync-ticket](skills/sync-ticket/SKILL.md)** keeps the ticket's Specification section and sub-tasks up
+  to date.
+- **[pr-host](skills/pr-host/SKILL.md)** talks to Azure DevOps, GitHub, GitLab or a plain git repository
+  through one set of commands.
+- **[score-pr](skills/score-pr/SKILL.md)** rates a change from 0 to 100 by how much it can break and
+  whether it can be undone.
+- **[setup-repo](skills/setup-repo/SKILL.md)** teaches the skills about a repository: where the dangerous
+  code is, which checks must pass, and how it merges.
+- **[measure-prs](skills/measure-prs/SKILL.md)** shows what the reviews cost, what they found, and what
+  slipped through, and suggests changes based on those numbers.
+
+I use them with Jira and Azure DevOps every day. GitHub, GitLab and plain git work through the same
 commands.
 
 ## Install
 
-In Claude Code (2.1.275 or later):
+In Claude Code 2.1.275 or later:
 
 ```
 /plugin install denisulmer-skills --marketplace denisulmer/skills
@@ -45,30 +69,36 @@ On older versions, add the marketplace first:
 /plugin install denisulmer-skills@denisulmer
 ```
 
-`/plugin marketplace update denisulmer` picks up new versions; [releases](https://github.com/denisulmer/skills/releases)
-say what changed. Installed an older version as `denisulmer@denisulmer` (2.x) or `ado-pr@denisulmer` (1.x)? Uninstall it first.
+You also need Node 18 or later, git 2.38 or later, and to be signed in wherever your code lives. Run
+`/plugin marketplace update denisulmer` to get new versions; the
+[releases](https://github.com/denisulmer/skills/releases) say what changed. If you installed an older
+version as `denisulmer@denisulmer` (2.x) or `ado-pr@denisulmer` (1.x), uninstall it first.
 
 ## Use
 
 ```
 /denisulmer-skills:spec-feature SHOP-228
-/denisulmer-skills:build-feature SHOP-228
 /denisulmer-skills:babysit-pr 123
+```
+
+Those two are the usual starting points. The others work the same way:
+
+```
+/denisulmer-skills:build-feature SHOP-228
 /denisulmer-skills:merge-pr 123
 /denisulmer-skills:score-pr https://github.com/<owner>/<repo>/pull/123
 /denisulmer-skills:setup-repo
 /denisulmer-skills:measure-prs
 ```
 
-`spec-feature` carries on by itself to the merge question once you approve the spec. Each skill also works
-alone: `babysit-pr` on any pull request, `spec-feature "an idea"` without a ticket. Start `spec-feature` or
-`babysit-pr` in a session of its own: they run for a while and wait for you at decisions, at the spec
-approval and at the merge. The session only conducts, so Claude Code's default (Opus at medium effort) is
-enough for it: each review tier names the model and effort of its reviewers, skeptics, fixer and builder
-([the table](docs/GUIDE.md#6-what-is-used-and-why)).
+You don't need to set anything up first. In a repository the skills haven't seen before, they work out
+sensible defaults from its files and tell you what they assumed. Running `setup-repo` later makes those
+defaults sharper.
 
-No setup is needed first. A repository without a profile gets one drafted from its files, and the skill
-says what it assumed; `setup-repo` calibrates it later.
+`spec-feature` and `babysit-pr` run for a while and wait for you at decisions, the spec approval and the
+merge, so give each one a session of its own. That session mostly coordinates, so Claude Code's default
+model is enough. The heavier work runs on models picked for how risky the change is; the
+[guide](docs/GUIDE.md#6-what-is-used-and-why) lists which model runs what.
 
 ## Develop
 
@@ -76,22 +106,21 @@ says what it assumed; `setup-repo` calibrates it later.
 ./install.ps1
 ```
 
-Links every folder under `skills/` into `~/.claude/skills/` with a directory junction, so edits here are
-live in the next Claude Code session (skills then have no `denisulmer-skills:` prefix). Rerun it after a
-skill is added. Use this or the plugin, not both, or every skill shows up twice.
+This links each skill into `~/.claude/skills/`, so your edits are live in the next Claude Code session.
+The skills then have no `denisulmer-skills:` prefix. Rerun it after adding a skill. Use either this or the
+plugin, not both, or every skill shows up twice.
 
 ```
 node --test tests/*.test.mjs
 ```
 
-runs the tests: the review round with stub agents, `babysit.mjs` end to end on a throwaway repository, the
-ticket section in Jira's format and in Markdown, the profile draft, the price table.
+runs the tests.
 
-Every change to `skills/` ships as a release: raise `version` in
-[.claude-plugin/marketplace.json](.claude-plugin/marketplace.json), add a section for it to
-[CHANGELOG.md](CHANGELOG.md), push. The [release workflow](.github/workflows/release.yml) runs the tests,
-tags the version and publishes a GitHub release with that section as its notes, and fails when `skills/`
-changed without a new version. [CLAUDE.md](CLAUDE.md) says what every change is measured against.
+Every change under `skills/` is a release. Raise `version` in
+[.claude-plugin/marketplace.json](.claude-plugin/marketplace.json), add a section to
+[CHANGELOG.md](CHANGELOG.md) and push. The [release workflow](.github/workflows/release.yml) runs the
+tests, tags the version and publishes the release. [CLAUDE.md](CLAUDE.md) lists the principles every
+change is checked against.
 
 ## License
 
